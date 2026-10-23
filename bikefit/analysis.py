@@ -67,6 +67,8 @@ def analyze_track(track: Track, crank_length_mm: float | None, profile: str | No
         warnings.append("Das Bild bewegt sich (Kamera geschwenkt oder gezoomt?). Kamera muss fest stehen, "
                         "sonst sind Pedalkreis, mm-Werte und Hüftbewegung falsch.")
     evaluation = targets.evaluate(summary, target_set)
+    targets.corrections(evaluation, summary, segments, crank.mm_per_px, rider.rad,
+                        tt=profile == "zeitfahren")
     tips = targets.recommend(summary, segments, crank.mm_per_px, target_set, rider.rad)
     seg_mm = ({"thigh": segments["thigh_px"] * crank.mm_per_px, "shank": segments["shank_px"] * crank.mm_per_px}
               if crank.mm_per_px else None)

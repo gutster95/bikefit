@@ -40,3 +40,20 @@ def test_interactive_roundtrip(tmp_path, monkeypatch):
     assert p.fahrer.beweglichkeit == "gering" and p.fahrer.ziel == "rennen"
     assert p.fahrer.beschwerden == ["knie_vorne", "ruecken"]
     assert p.rad.kurbel_mm == 172.5 and p.rad.vorbau_winkel_grad == -6
+
+
+def test_corrections_for_every_off_target_value():
+    from bikefit import targets
+    from bikefit.profile import Bike
+    summary = {k: {"median": v, "std": 2.0} for k, v in {
+        "knee_extension": 34, "knee_flexion_max": 112, "hip_closed": 60, "ankle_range": 20,
+        "torso_angle": 42, "shoulder_angle": 100, "elbow_flexion": 10, "kops_mm": -35}.items()}
+    rows = targets.evaluate(summary)
+    segs = {"thigh_px": 430, "shank_px": 420, "arm_px": 560}
+    targets.corrections(rows, summary, segs, 1.0, Bike(sattelversatz_mm=60, vorbau_mm=110))
+    by = {r["key"]: r for r in rows}
+    assert by["knee_extension"]["korrektur"] is None
+    assert "nach vorn" in by["kops_mm"]["korrektur"] and "60 → 50 mm" in by["kops_mm"]["korrektur"]
+    assert "kürzer" in by["shoulder_angle"]["korrektur"] and "110 →" in by["shoulder_angle"]["korrektur"]
+    assert "gestreckt" in by["elbow_flexion"]["korrektur"]
+    assert by["kops_mm"]["schritt"] == 2 and by["elbow_flexion"]["schritt"] == 3

@@ -14,8 +14,14 @@ const ICONS = {
   trophy: '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
   alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  gauge: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+  crosshair: '<circle cx="12" cy="12" r="9"/><path d="M22 12h-4M6 12H2M12 6V2M12 22v-4"/>',
+  angle: '<path d="M4 20h16"/><path d="M4 20 15 5"/><path d="M10 20a6 6 0 0 0-2.4-4.8"/>',
+  foot: '<path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z"/><path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z"/>',
+  user: '<circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/>',
   bike: '<circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-3 11.5V14l-3-3 4-3 2 3h2"/>',
 };
+const btnIcon = (name) => `<span class="circle">${icon(name, "sm")}</span>`;
 const icon = (name, cls = "") => `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const num = (v) => (v === "" || v == null ? null : Number(String(v).replace(",", ".")));
@@ -64,13 +70,14 @@ async function viewStart() {
   };
   render(`
     <section class="hero">
-      <div>
+      <div class="card lime">
+        <span class="wheel" aria-hidden="true">${icon("bike")}</span>
         <h1>Dein Bike-Fit, Schritt für Schritt</h1>
         <p class="lead">Wie beim Fitter im Laden: Erst reden wir über dich und dein Rad, dann filmst du dich auf der Rolle.
         Die Software misst deine Gelenkwinkel und sagt dir, was du verstellen sollst. Danach filmst du erneut, bis alles passt.</p>
-        <a class="btn btn-primary" href="#/gespraech">Neues Fitting starten ${icon("arrowRight", "sm")}</a>
+        <a class="btn btn-dark" href="#/gespraech">${btnIcon("arrowRight")} Neues Fitting starten</a>
       </div>
-      <div class="card">
+      <div class="card paper">
         <h3>So läuft es ab</h3>
         <ol class="steps">
           <li><div><strong>Gespräch</strong><br><span class="muted">Ziel und Beschwerden</span></div></li>
@@ -89,7 +96,7 @@ async function viewStart() {
           const last = s.runden[s.runden.length - 1];
           const done = last?.status === "fertig" && s.runden.some((r) => r.status === "fertig");
           return `<li><a href="#/sitzung/${s.id}">
-            ${icon("bike")}
+            <span class="bubble">${icon("bike")}</span>
             <div><div class="title"><strong>${esc(bikeName(s.rad_id))}</strong></div>
             <div class="muted small">${new Date(s.erstellt).toLocaleString("de-DE")} · ${s.runden.length} Runde${s.runden.length === 1 ? "" : "n"}</div></div>
             <span class="spacer"></span>
@@ -137,7 +144,7 @@ async function viewConversation() {
       </form>
       <div class="actions">
         <a class="btn btn-ghost" href="#/">${icon("arrowLeft", "sm")} Zurück</a>
-        <button class="btn btn-primary" form="f" type="submit">Weiter ${icon("arrowRight", "sm")}</button>
+        <button class="btn btn-primary" form="f" type="submit">${btnIcon("arrowRight")} Weiter</button>
       </div>
     </section>`, 0);
   document.getElementById("f").addEventListener("submit", async (e) => {
@@ -199,7 +206,7 @@ async function viewBody() {
       </form>
       <div class="actions">
         <a class="btn btn-ghost" href="#/gespraech">${icon("arrowLeft", "sm")} Zurück</a>
-        <button class="btn btn-primary" form="f" type="submit">Weiter ${icon("arrowRight", "sm")}</button>
+        <button class="btn btn-primary" form="f" type="submit">${btnIcon("arrowRight")} Weiter</button>
       </div>
     </section>`, 1);
   document.getElementById("f").addEventListener("submit", async (e) => {
@@ -219,7 +226,9 @@ async function viewBody() {
 
 // ---------------------------------------------------------------- step 3: bike
 async function viewBike() {
-  const [bikes, brands] = await Promise.all([api("/api/raeder"), api("/api/marken")]);
+  const [bikes, brands, models] = await Promise.all([api("/api/raeder"), api("/api/marken"), api("/api/modelle")]);
+  const byBrand = {};
+  for (const m of models) (byBrand[m.marke] ||= []).push(m);
   let selected = bikes.length ? bikes[bikes.length - 1].id : "neu";
   const draw = () => {
     const b = bikes.find((x) => x.id === selected) || { typ: "rennrad" };
@@ -234,6 +243,19 @@ async function viewBike() {
           <label class="choice"><input type="radio" name="sel" value="neu" ${selected === "neu" ? "checked" : ""}><span><strong>${icon("plus", "sm")} Neues Rad</strong><small>Zur Garage hinzufügen</small></span></label>
         </div></fieldset></div>` : ""}
         <form id="f" class="card stack" novalidate>
+          <div class="preset">
+            <h3>Aus dem Katalog <span class="muted small">(füllt Modell, Größe, Kurbel und Geometrie aus)</span></h3>
+            <div class="grid-2">
+              <div class="field"><label for="preset">Modell</label>
+                <select id="preset"><option value="">Anderes Rad, selbst eintragen</option>
+                  ${Object.keys(byBrand).sort((a, z) => a.localeCompare(z)).map((brand) => `<optgroup label="${esc(brand)}">
+                    ${byBrand[brand].map((m) => `<option value="${m.id}">${esc(m.marke + " " + m.modell)} (${esc(m.jahre)})</option>`).join("")}</optgroup>`).join("")}
+                </select></div>
+              <div class="field"><label for="preset-size">Rahmengröße</label>
+                <select id="preset-size" disabled><option value="">Erst Modell wählen</option></select></div>
+            </div>
+            <p class="muted small" id="preset-note" hidden>Werte laut Hersteller-Geometrie. Die Kurbellänge ist die Serienausstattung, prüf sie bitte auf der Innenseite deiner Kurbel.</p>
+          </div>
           <div class="grid-3">
             <div class="field"><label for="marke">Marke</label>
               <input id="marke" name="marke" type="text" list="brands" value="${esc(b.marke)}" autocomplete="off">
@@ -265,10 +287,31 @@ async function viewBike() {
         </form>
         <div class="actions">
           <a class="btn btn-ghost" href="#/koerper">${icon("arrowLeft", "sm")} Zurück</a>
-          <button class="btn btn-primary" form="f" type="submit">Rad speichern und weiter ${icon("arrowRight", "sm")}</button>
+          <button class="btn btn-primary" form="f" type="submit">${btnIcon("arrowRight")} Rad speichern und weiter</button>
         </div>
       </section>`, 2);
     main.querySelectorAll('input[name="sel"]').forEach((el) => el.addEventListener("change", () => { selected = el.value; draw(); }));
+    const presetSel = document.getElementById("preset"), sizeSel = document.getElementById("preset-size");
+    presetSel.addEventListener("change", () => {
+      const m = models[presetSel.value];
+      sizeSel.disabled = !m;
+      sizeSel.innerHTML = m ? `<option value="">Größe wählen</option>` + m.groessen.map((g, i) => `<option value="${i}">${esc(g.groesse)}</option>`).join("")
+        : `<option value="">Erst Modell wählen</option>`;
+      if (!m) return;
+      const f = document.getElementById("f");
+      f.elements.marke.value = m.marke;
+      f.elements.modell.value = `${m.modell} (${m.jahre})`;
+      sizeSel.focus();
+    });
+    sizeSel.addEventListener("change", () => {
+      const m = models[presetSel.value], g = m && m.groessen[sizeSel.value];
+      if (!g) return;
+      const f = document.getElementById("f");
+      f.elements.rahmengroesse.value = g.groesse;
+      for (const k of ["kurbel_mm", "stack_mm", "reach_mm", "sitzwinkel_grad"]) if (g[k] != null) f.elements[k].value = g[k];
+      f.querySelector("details.more").open = true;
+      document.getElementById("preset-note").hidden = false;
+    });
     document.getElementById("f").addEventListener("submit", async (e) => {
       e.preventDefault();
       const f = e.target;
@@ -305,7 +348,7 @@ async function viewVideo(sid) {
       <h1>${next === 1 ? "Zeit fürs Video" : `Runde ${next}: Hast du etwas verstellt?`}</h1>
       <p class="lead">${next === 1 ? "Ein gutes Video ist die halbe Miete. Achte auf diese Punkte:" :
         "Trag ein, was du geändert hast, und lade ein neues Video hoch. Die Software vergleicht dann mit der letzten Runde."}</p>
-      ${next === 1 ? `<div class="card"><ul class="checklist">${RECORDING.map((t) => `<li>${icon("check", "sm")}<span>${t}</span></li>`).join("")}</ul></div>` : `
+      ${next === 1 ? `<div class="card"><ul class="checklist">${RECORDING.map((t) => `<li><span class="tick">${icon("check", "sm")}</span><span>${t}</span></li>`).join("")}</ul></div>` : `
       ${last?.ergebnis ? `<div class="card"><h3>Letzte Empfehlung</h3>${last.ergebnis.recommendations.map((t) => `<p class="tip">${esc(t)}</p>`).join("")}</div>` : ""}`}
       <form id="f" class="card stack" novalidate>
         ${next > 1 ? `
@@ -317,7 +360,7 @@ async function viewVideo(sid) {
         </div>
         <div class="field"><label for="aenderung">Was hast du sonst verändert?</label><input id="aenderung" name="aenderung" type="text" placeholder="z. B. Sattel 5 mm tiefer"></div>` : ""}
         <label class="drop" id="drop" for="video">
-          ${icon("upload")}
+          <span class="bubble">${icon("upload")}</span>
           <strong id="drop-text">Video hier ablegen oder klicken zum Auswählen</strong>
           <span class="muted small">MP4 oder MOV direkt vom Handy</span>
           <input id="video" name="video" type="file" accept="video/*" hidden>
@@ -327,7 +370,7 @@ async function viewVideo(sid) {
       </form>
       <div class="actions">
         <a class="btn btn-ghost" href="${next === 1 ? "#/rad" : `#/sitzung/${sid}`}">${icon("arrowLeft", "sm")} Zurück</a>
-        <button class="btn btn-primary" form="f" type="submit" id="go" disabled>Analyse starten ${icon("arrowRight", "sm")}</button>
+        <button class="btn btn-primary" form="f" type="submit" id="go" disabled>${btnIcon("arrowRight")} Analyse starten</button>
       </div>
     </section>`, 3);
   const input = document.getElementById("video");
@@ -414,10 +457,12 @@ function viewError(s, r) {
       <div class="card verdict">${icon("alert")}<div><p class="tip">${esc(r.meldung)}</p>
       <p class="muted">Meist hilft ein neues Video: länger, gleichmäßig treten, ganze Person im Bild.</p></div></div>
       <div class="actions"><a class="btn btn-ghost" href="#/">Zur Übersicht</a>
-      <a class="btn btn-primary" href="#/sitzung/${s.id}/video">Neues Video hochladen ${icon("upload", "sm")}</a></div>
+      <a class="btn btn-primary" href="#/sitzung/${s.id}/video">${btnIcon("upload")} Neues Video hochladen</a></div>
     </section>`, 3);
 }
 
+const METRIC_ICON = { knee_extension: "gauge", knee_flexion_max: "gauge", kops_mm: "crosshair", hip_closed: "angle",
+  ankle_range: "foot", torso_angle: "user", shoulder_angle: "angle", elbow_flexion: "angle" };
 const KEY_ORDER = ["knee_extension", "kops_mm", "knee_flexion_max", "hip_closed", "ankle_range", "torso_angle", "shoulder_angle", "elbow_flexion"];
 
 function metricBar(e, prev) {
@@ -439,45 +484,55 @@ function viewResult(s, finished, nr) {
   const prevEval = Object.fromEntries((prevRound?.ergebnis?.evaluation || []).map((e) => [e.key, e]));
   const isLatest = nr === finished[finished.length - 1].nr;
   const evals = [...res.evaluation].sort((a, b) => KEY_ORDER.indexOf(a.key) - KEY_ORDER.indexOf(b.key));
-  const unit = (u) => (u === "°" ? "°" : " " + u);
+  const value = (v, u) => `${fmt(v)}<small>${u === "°" ? "°" : u}</small>`;
   render(`
-    <div class="row" style="margin-bottom:var(--space-lg)">
-      <div><h1>${res.done ? "Du sitzt gut!" : "Deine Auswertung"}</h1>
-      <p class="muted" style="margin:0">Runde ${nr} · ${res.cycles} Kurbelumdrehungen · ${fmt(res.cadence_rpm)} U/min${round.aenderung ? " · Geändert: " + esc(round.aenderung) : ""}</p></div>
+    <div class="result-head">
+      <div><h1>${res.done ? "Du sitzt <span class='accent'>super</span>!" : "Deine Auswertung"}</h1>
+      <p class="muted" style="margin:0">Runde ${nr}${round.aenderung ? " · Geändert: " + esc(round.aenderung) : ""}</p></div>
+      <div class="facts">
+        <span class="fact">${res.cycles}<small>Umdrehungen</small></span>
+        <span class="fact">${fmt(res.cadence_rpm)}<small>U/min</small></span>
+        <span class="fact">${evals.filter((e) => e.status === "ok").length}/${evals.length}<small>im Ziel</small></span>
+      </div>
     </div>
     <div class="result">
       <div class="video-wrap">
-        <video controls playsinline preload="metadata" src="/medien/${s.id}/${nr}/analyse.mp4" aria-label="Video mit erkannten Gelenken, Runde ${nr}"></video>
-        <p class="muted small">Weiß: erkannte Gelenke · Gelb: Pedalkreis und Tretlager</p>
+        <div class="card video-card">
+          <video controls playsinline preload="metadata" src="/medien/${s.id}/${nr}/analyse.mp4" aria-label="Video mit erkannten Gelenken, Runde ${nr}"></video>
+          <p class="muted small">Weiß: erkannte Gelenke · Gelb: Pedalkreis und Tretlager</p>
+        </div>
         ${finished.length > 1 ? `<div class="rounds" role="group" aria-label="Runde wählen">${finished.map((r) =>
           `<button class="btn btn-secondary" aria-pressed="${r.nr === nr}" data-nr="${r.nr}">Runde ${r.nr}</button>`).join("")}</div>` : ""}
       </div>
       <div class="stack">
-        <section class="card verdict ${res.done ? "good" : ""}">
-          ${icon(res.done ? "trophy" : "wrench")}
-          <div>
-            <h2>${res.done ? "Alles im Zielbereich" : "Nächster Schritt"}</h2>
-            ${res.recommendations.map((t) => `<p class="tip">${esc(t)}</p>`).join("")}
-            ${isLatest ? (res.done
-              ? `<p class="muted">Notier dir deine Einstellungen. Wenn du magst, kannst du zur Kontrolle noch eine Runde filmen.</p>
-                 <a class="btn btn-secondary" href="#/sitzung/${s.id}/video">Kontrollrunde filmen</a>`
-              : `<a class="btn btn-primary" href="#/sitzung/${s.id}/video">Umgesetzt, neues Video hochladen ${icon("upload", "sm")}</a>`) : ""}
-          </div>
+        <section class="card lime verdict">
+          <div class="top"><span class="bubble">${icon(res.done ? "trophy" : "wrench")}</span>
+            <h2>${res.done ? "Alles im Zielbereich" : "Nächster Schritt"}</h2></div>
+          ${res.recommendations.map((t) => `<p class="tip">${esc(t)}</p>`).join("")}
+          ${isLatest ? (res.done
+            ? `<p class="muted" style="margin:0">Notier dir deine Einstellungen. Wenn du magst, kannst du zur Kontrolle noch eine Runde filmen.</p>
+               <a class="btn btn-dark" href="#/sitzung/${s.id}/video">${btnIcon("upload")} Kontrollrunde filmen</a>`
+            : `<a class="btn btn-dark" href="#/sitzung/${s.id}/video">${btnIcon("upload")} Umgesetzt, neues Video hochladen</a>`) : ""}
         </section>
         <section class="card">
           <h2>Messwerte</h2>
-          <p class="muted small">Grüner Bereich = Ziel. Strich = dein Wert${prevRound ? ", grauer Strich = Runde " + prevRound.nr : ""}.</p>
+          <p class="muted small">Grüner Bereich = Ziel, heller Strich = dein Wert${prevRound ? ", grauer Strich = Runde " + prevRound.nr : ""}.
+          Bei Werten außerhalb des Ziels steht direkt dabei, was du am Rad änderst.</p>
           <ul class="metrics">${evals.map((e) => {
             const p = prevEval[e.key];
             const d = p ? e.value - p.value : null;
-            return `<li class="metric">
-              <div class="head"><span>${esc(e.label)}</span>
-                <span class="value">${fmt(e.value)}${unit(e.unit)}</span></div>
+            const off = e.status !== "ok";
+            return `<li class="metric ${off ? "off" : ""}">
+              <div class="head"><span class="dot">${icon(METRIC_ICON[e.key] || "gauge", "sm")}</span>
+                <span class="label">${esc(e.label)}</span></div>
+              <div class="value">${value(e.value, e.unit)}</div>
               ${metricBar(e, p)}
-              <div class="row" style="justify-content:space-between;margin-top:6px">
-                <span class="status ${e.status === "ok" ? "ok" : "off"}">${e.status === "ok" ? "Im Zielbereich" : e.status === "hoch" ? "Über dem Ziel" : "Unter dem Ziel"} (${fmt(e.lo)}–${fmt(e.hi)}${unit(e.unit)})</span>
-                ${d != null ? `<span class="delta">${d >= 0 ? "+" : "−"}${fmt(Math.abs(d), 1)}${unit(e.unit)} zu Runde ${prevRound.nr}</span>` : ""}
-              </div></li>`;
+              <div class="foot">
+                <span class="status ${off ? "off" : "ok"}">${off ? (e.status === "hoch" ? "Über dem Ziel" : "Unter dem Ziel") : "Im Ziel"} · ${fmt(e.lo)}–${fmt(e.hi)}${e.unit === "°" ? "°" : " " + e.unit}</span>
+                ${d != null ? `<span class="delta">${d >= 0 ? "+" : "−"}${fmt(Math.abs(d), 1)}${e.unit === "°" ? "°" : " " + e.unit} zu Runde ${prevRound.nr}</span>` : ""}
+              </div>
+              ${off && e.korrektur ? `<div class="fix">${icon("wrench", "sm")}<div><span class="step">So korrigierst du es${e.schritt ? " · Schritt " + e.schritt + " von 3" : ""}</span>${esc(e.korrektur)}</div></div>` : ""}
+            </li>`;
           }).join("")}</ul>
         </section>
         ${res.warnings.length ? `<section class="card"><h3>${icon("alert", "sm")} Zur Messqualität</h3><ul class="notes">${res.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></section>` : ""}

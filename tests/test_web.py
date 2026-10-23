@@ -15,3 +15,17 @@ def test_rider_bike_session_flow(tmp_path):
     assert detail["rad"]["marke"] == "Canyon" and detail["runden"] == []
     assert "Canyon" in client.get("/api/marken").json()
     assert client.get("/").status_code == 200
+
+
+def test_model_presets_are_plausible():
+    from bikefit.web.geometry import presets
+    models = presets()
+    assert len({(m["marke"], m["modell"]) for m in models}) >= 20
+    assert any(m["modell"] == "Endurace CF SLX" and m["jahre"] == "2024–2025" for m in models)
+    for m in models:
+        stacks = [g["stack_mm"] for g in m["groessen"]]
+        assert stacks == sorted(stacks), m["modell"]
+        for g in m["groessen"]:
+            assert 480 <= g["stack_mm"] <= 670 and 340 <= g["reach_mm"] <= 440, (m["modell"], g)
+            assert g["sitzwinkel_grad"] is None or 72 <= g["sitzwinkel_grad"] <= 76
+            assert g["kurbel_mm"] in (None, 165, 170, 172.5, 175)

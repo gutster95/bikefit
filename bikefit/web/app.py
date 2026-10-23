@@ -14,8 +14,11 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .. import targets
+from ..profile import Bike
 from ..video import analyze_file
 from .brands import BRANDS
+from .geometry import presets
 from .store import Store
 
 STATIC = Path(__file__).parent / "static"
@@ -84,6 +87,10 @@ def create_app(data_dir: Path) -> FastAPI:
     def brands():
         return BRANDS
 
+    @app.get("/api/modelle")
+    def models():
+        return presets()
+
     @app.get("/api/raeder")
     def bikes():
         return store.bikes()
@@ -113,6 +120,8 @@ def create_app(data_dir: Path) -> FastAPI:
             if r["status"] == "fertig":
                 r["ergebnis"] = store.result(sid, r["nr"])
         s["rad"] = store.bike(s["rad_id"])
+        for r in s["runden"]:
+            _add_corrections(r.get("ergebnis"), s["rad"])
         return s
 
     @app.post("/api/sitzungen/{sid}/runden")
@@ -148,3 +157,14 @@ def create_app(data_dir: Path) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
     return app
+
+
+def _add_corrections(res: dict | None, bike: dict | None) -> None:
+    """Results stored before per-metric corrections existed get them on read."""
+    if not res or all("korrektur" in e for e in res.get("evaluation", [])):
+        return
+    scale = res.get("mm_per_px")
+    segments = {k: v / scale for k, v in (res.get("segments_mm") or {}).items()} if scale else {}
+    tt = any(e["key"] == "torso_angle" and e["hi"] <= 30 for e in res["evaluation"])
+    targets.corrections(res["evaluation"], res.get("summary", {}), segments, scale,
+                        Bike.from_dict(bike) if bike else None, tt=tt)
