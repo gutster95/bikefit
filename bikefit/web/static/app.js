@@ -133,7 +133,7 @@ async function viewStart() {
       <div class="card paper">
         <h3>${t("start.how")}</h3>
         <ol class="steps">
-          ${t("start.steps").map(([a, b]) => `<li><div><strong>${a}</strong><br><span class="muted">${b}</span></div></li>`).join("")}
+          ${t("start.steps").map((step) => `<li><div><strong>${step}</strong></div></li>`).join("")}
         </ol>
       </div>
     </section>
@@ -351,7 +351,8 @@ async function viewBike() {
       if (!g) return;
       const f = document.getElementById("f");
       f.elements.frame_size.value = g.size;
-      for (const k of ["crank_mm", "stack_mm", "reach_mm", "seat_angle_deg"]) if (g[k] != null) f.elements[k].value = g[k];
+      for (const k of ["stack_mm", "reach_mm", "seat_angle_deg"]) f.elements[k].value = g[k] ?? "";
+      if (g.crank_mm != null) f.elements.crank_mm.value = g.crank_mm;  // keep the rider's own value otherwise
       f.querySelector("details.more").open = true;
       document.getElementById("preset-note").hidden = false;
     });

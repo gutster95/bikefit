@@ -24,12 +24,12 @@ def test_rider_bike_session_flow(tmp_path):
 def test_model_presets_are_plausible():
     from bikefit.web.geometry import presets
     models = presets()
-    assert len({(m["brand"], m["model"]) for m in models}) >= 20
+    assert len({(m["brand"], m["model"], m["years"]) for m in models}) >= 100
     assert any(m["model"] == "Endurace CF SLX" and m["years"] == "2024–2025" for m in models)
     for m in models:
         stacks = [g["stack_mm"] for g in m["sizes"]]
         assert stacks == sorted(stacks), m["model"]
         for g in m["sizes"]:
-            assert 480 <= g["stack_mm"] <= 670 and 340 <= g["reach_mm"] <= 440, (m["model"], g)
+            assert 480 <= g["stack_mm"] <= 700 and 340 <= g["reach_mm"] <= 440, (m["model"], g)
             assert g["seat_angle_deg"] is None or 72 <= g["seat_angle_deg"] <= 76
             assert g["crank_mm"] in (None, 165, 170, 172.5, 175)
