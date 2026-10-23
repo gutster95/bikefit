@@ -1,0 +1,13 @@
+.venv/
+models/
+ergebnisse/
+aufnahmen/
+videos/
+daten/
+__pycache__/
+profil.json
+.pytest_cache/
+.DS_Store
+screenshots/
+*.mp4
+*.mov
