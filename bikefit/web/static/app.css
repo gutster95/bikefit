@@ -77,6 +77,13 @@ a { color: var(--color-lime); }
 .stepper li[aria-current="step"] .num { background: var(--color-on-lime); color: var(--color-lime); }
 .stepper li.done { color: var(--color-foreground); }
 .stepper li.done .num { background: color-mix(in srgb, var(--color-lime) 22%, transparent); color: var(--color-lime); }
+/* the step names are long: below this width only the current step shows its name */
+@media (max-width: 1240px) {
+  .stepper li { padding: 4px; }
+  .stepper .label { display: none; }
+  .stepper li[aria-current="step"] { padding-right: 14px; }
+  .stepper li[aria-current="step"] .label { display: inline; }
+}
 
 main { max-width: 1240px; margin: 0 auto; padding: var(--space-xl) var(--space-lg) var(--space-2xl); outline: none; }
 main:focus-visible { outline: none; }
@@ -257,10 +264,6 @@ video { width: 100%; border-radius: var(--radius-md); background: #000; display:
   main { padding: var(--space-lg) var(--space-md) var(--space-2xl); }
   .stepper { margin-left: 0; width: 100%; }
   .stepper ol { justify-content: space-between; width: 100%; }
-  .stepper li { padding: 4px; }
-  .stepper .label { display: none; }
-  .stepper li[aria-current="step"] { padding-right: 14px; }
-  .stepper li[aria-current="step"] .label { display: inline; }
   .topbar { padding: var(--space-sm) var(--space-md); gap: var(--space-sm); }
   .hero .card.lime { padding: var(--space-xl) var(--space-lg); }
   .card { padding: var(--space-md); border-radius: var(--radius-md); }

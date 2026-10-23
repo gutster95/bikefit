@@ -133,7 +133,7 @@ async function viewStart() {
       <div class="card paper">
         <h3>${t("start.how")}</h3>
         <ol class="steps">
-          ${t("start.steps").map((step) => `<li><div><strong>${step}</strong></div></li>`).join("")}
+          ${t("steps").map((step) => `<li><div><strong>${step}</strong></div></li>`).join("")}
         </ol>
       </div>
     </section>
