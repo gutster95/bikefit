@@ -1,13 +1,17 @@
 .venv/
 models/
-ergebnisse/
-aufnahmen/
+data/
+results/
 videos/
-daten/
+profile.json
 __pycache__/
-profil.json
 .pytest_cache/
 .DS_Store
 screenshots/
 *.mp4
 *.mov
+# folders of the first, German-named version (moved on start)
+daten/
+ergebnisse/
+aufnahmen/
+profil.json

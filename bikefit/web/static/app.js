@@ -1,9 +1,10 @@
 // Bikefit web app: a guided fitting conversation in five steps.
 // Plain ES modules, no build step; the Python server serves this file.
 
+import { LANGS, lang, locale, setLang, t } from "./i18n.js";
+
 const main = document.getElementById("main");
 const stepper = document.getElementById("stepper");
-const STEPS = ["Gespräch", "Körper", "Rad", "Video", "Auswertung"];
 
 const ICONS = {
   check: '<path d="M20 6 9 17l-5-5"/>',
@@ -26,15 +27,18 @@ const btnIcon = (name) => `<span class="circle">${icon(name, "sm")}</span>`;
 const icon = (name, cls = "") => `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const num = (v) => (v === "" || v == null ? null : Number(String(v).replace(",", ".")));
-const fmt = (v, d = 0) => Number(v).toLocaleString("de-DE", { maximumFractionDigits: d, minimumFractionDigits: d });
+const fmt = (v, d = 0) => Number(v).toLocaleString(locale(), { maximumFractionDigits: d, minimumFractionDigits: d });
+
+const date = (iso) => new Date(iso).toLocaleString(locale());
+const withLang = (path) => `${path}${path.includes("?") ? "&" : "?"}lang=${lang}`;
 
 async function api(path, options = {}) {
-  const res = await fetch(path, {
+  const res = await fetch(withLang(path), {
     headers: options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {},
     ...options,
     body: options.body && !(options.body instanceof FormData) ? JSON.stringify(options.body) : options.body,
   });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `Fehler ${res.status}`);
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || t("error.http", { status: res.status }));
   return res.json();
 }
 
@@ -48,32 +52,34 @@ function toast(text) {
 
 // The fitting currently being worked on, so the stepper can jump back to its
 // video and result steps after visiting an earlier step.
-let active = null; // { id, rad_id, hasResult }
+let active = null; // { id, bike_id, hasResult }
 
 function stepHref(i) {
-  if (i <= 2) return ["#/gespraech", "#/koerper", "#/rad"][i];
+  if (i <= 2) return ["#/interview", "#/body", "#/bike"][i];
   if (!active) return null;
-  if (i === 3) return `#/sitzung/${active.id}/video`;
-  return active.hasResult ? `#/sitzung/${active.id}` : null;
+  if (i === 3) return `#/session/${active.id}/video`;
+  return active.hasResult ? `#/session/${active.id}` : null;
 }
 
 function setStep(index) {
   if (index == null) { stepper.hidden = true; active = null; return; }
   stepper.hidden = false;
-  stepper.innerHTML = `<ol>${STEPS.map((s, i) => {
+  stepper.setAttribute("aria-label", t("steps.nav"));
+  stepper.innerHTML = `<ol>${t("steps").map((s, i) => {
     const inner = `<span class="num">${i < index ? "✓" : i + 1}</span><span class="label">${s}</span>`;
     const href = i !== index && stepHref(i);
     return `<li class="${i < index ? "done" : ""}" ${i === index ? 'aria-current="step"' : ""}>
-      ${href ? `<a href="${href}" aria-label="Zu Schritt ${i + 1}: ${s}">${inner}</a>` : `<span class="step">${inner}</span>`}</li>`;
+      ${href ? `<a href="${href}" aria-label="${esc(t("steps.goto", { n: i + 1, name: s }))}">${inner}</a>` : `<span class="step">${inner}</span>`}</li>`;
   }).join("")}</ol>`;
 }
 
 function trackSession(s) {
-  active = { id: s.id, rad_id: s.rad_id, hasResult: s.runden.some((r) => r.status === "fertig") };
+  active = { id: s.id, bike_id: s.bike_id, hasResult: s.rounds.some((r) => r.status === "done") };
 }
 
 function render(html, step) {
   setStep(step);
+  drawChrome();
   main.innerHTML = html;
   main.focus({ preventScroll: true });
   window.scrollTo({ top: 0 });
@@ -86,7 +92,7 @@ function confirmDialog(title, text, okLabel) {
     d.className = "confirm";
     d.setAttribute("aria-labelledby", "confirm-title");
     d.innerHTML = `<h2 id="confirm-title">${esc(title)}</h2><p class="muted">${esc(text)}</p>
-      <div class="row"><button class="btn btn-secondary" value="no">Abbrechen</button>
+      <div class="row"><button class="btn btn-secondary" value="no">${t("cancel")}</button>
       <button class="btn btn-danger" value="yes">${btnIcon("trash")} ${esc(okLabel)}</button></div>`;
     document.body.append(d);
     d.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => d.close(b.value)));
@@ -97,13 +103,11 @@ function confirmDialog(title, text, okLabel) {
 }
 
 async function deleteSession(sid, label) {
-  const ok = await confirmDialog("Fitting löschen?",
-    `${label}: Videos, Auswertungen und alle Runden werden endgültig gelöscht. Das lässt sich nicht rückgängig machen.`,
-    "Endgültig löschen");
+  const ok = await confirmDialog(t("delete.title"), t("delete.text", { label }), t("delete.ok"));
   if (!ok) return false;
   try {
-    await api(`/api/sitzungen/${sid}`, { method: "DELETE" });
-    toast("Fitting gelöscht");
+    await api(`/api/sessions/${sid}`, { method: "DELETE" });
+    toast(t("delete.done"));
     return true;
   } catch (err) {
     toast(err.message);
@@ -113,47 +117,42 @@ async function deleteSession(sid, label) {
 
 // ---------------------------------------------------------------- start
 async function viewStart() {
-  const [sessions, bikes] = await Promise.all([api("/api/sitzungen"), api("/api/raeder")]);
+  const [sessions, bikes] = await Promise.all([api("/api/sessions"), api("/api/bikes")]);
   const bikeName = (id) => {
     const b = bikes.find((x) => x.id === id);
-    return b ? [b.marke, b.modell].filter(Boolean).join(" ") || "Rad" : "Rad";
+    return (b && [b.brand, b.model].filter(Boolean).join(" ")) || t("bike");
   };
   render(`
     <section class="hero">
       <div class="card lime">
         <span class="wheel" aria-hidden="true">${icon("bike")}</span>
-        <h1>Dein Bike-Fit, Schritt für Schritt</h1>
-        <p class="lead">Wie beim Fitter im Laden: Erst reden wir über dich und dein Rad, dann filmst du dich auf der Rolle.
-        Die Software misst deine Gelenkwinkel und sagt dir, was du verstellen sollst. Danach filmst du erneut, bis alles passt.</p>
-        <a class="btn btn-dark" href="#/gespraech">${btnIcon("arrowRight")} Neues Fitting starten</a>
+        <h1>${t("start.title")}</h1>
+        <p class="lead">${t("start.lead")}</p>
+        <a class="btn btn-dark" href="#/interview">${btnIcon("arrowRight")} ${t("start.new")}</a>
       </div>
       <div class="card paper">
-        <h3>So läuft es ab</h3>
+        <h3>${t("start.how")}</h3>
         <ol class="steps">
-          <li><div><strong>Gespräch</strong><br><span class="muted">Ziel und Beschwerden</span></div></li>
-          <li><div><strong>Körper</strong><br><span class="muted">Größe, Schrittlänge, Beweglichkeit</span></div></li>
-          <li><div><strong>Rad</strong><br><span class="muted">Modell, Kurbel, aktuelle Einstellungen</span></div></li>
-          <li><div><strong>Video</strong><br><span class="muted">1 Minute seitlich auf der Rolle filmen</span></div></li>
-          <li><div><strong>Auswertung</strong><br><span class="muted">Eine Änderung, neu filmen, wiederholen</span></div></li>
+          ${t("start.steps").map(([a, b]) => `<li><div><strong>${a}</strong><br><span class="muted">${b}</span></div></li>`).join("")}
         </ol>
       </div>
     </section>
     ${sessions.length ? `
     <section class="card">
-      <h2>Bisherige Fittings</h2>
+      <h2>${t("start.past")}</h2>
       <ul class="session-list">
         ${sessions.map((s) => {
-          const last = s.runden[s.runden.length - 1];
-          const done = last?.status === "fertig" && s.runden.some((r) => r.status === "fertig");
-          const label = `${bikeName(s.rad_id)} vom ${new Date(s.erstellt).toLocaleString("de-DE")}`;
-          return `<li><a href="#/sitzung/${s.id}">
+          const last = s.rounds[s.rounds.length - 1];
+          const done = last?.status === "done";
+          const label = t("bike.of", { bike: bikeName(s.bike_id), date: date(s.created) });
+          return `<li><a href="#/session/${s.id}">
             <span class="bubble">${icon("bike")}</span>
-            <div><div class="title"><strong>${esc(bikeName(s.rad_id))}</strong></div>
-            <div class="muted small">${new Date(s.erstellt).toLocaleString("de-DE")} · ${s.runden.length} Runde${s.runden.length === 1 ? "" : "n"}</div></div>
+            <div><div class="title"><strong>${esc(bikeName(s.bike_id))}</strong></div>
+            <div class="muted small">${date(s.created)} · ${t("start.rounds", { n: s.rounds.length })}</div></div>
             <span class="spacer"></span>
-            ${done ? '<span class="badge ok">ausgewertet</span>' : last ? `<span class="badge">${esc(last.meldung)}</span>` : '<span class="badge">ohne Video</span>'}
+            ${done ? `<span class="badge ok">${t("start.analysed")}</span>` : last ? `<span class="badge">${esc(last.message)}</span>` : `<span class="badge">${t("start.no_video")}</span>`}
             ${icon("arrowRight", "sm")}
-          </a><button class="icon-btn" data-del="${s.id}" data-label="${esc(label)}" aria-label="Fitting löschen: ${esc(label)}" title="Fitting löschen">${icon("trash", "sm")}</button></li>`;
+          </a><button class="icon-btn" data-del="${s.id}" data-label="${esc(label)}" aria-label="${t("delete.button")}: ${esc(label)}" title="${t("delete.button")}">${icon("trash", "sm")}</button></li>`;
         }).join("")}
       </ul>
     </section>` : ""}
@@ -164,57 +163,50 @@ async function viewStart() {
 }
 
 // ---------------------------------------------------------------- step 1: conversation
-const GOALS = [
-  ["komfort", "Komfort", "Lange Touren, entspannt sitzen"],
-  ["sport", "Sportlich", "Training, schnelle Runden, Ausdauer"],
-  ["rennen", "Rennen", "Maximale Leistung und Aerodynamik"],
-];
-const COMPLAINTS = [
-  ["knie_vorne", "Knie vorne"], ["knie_hinten", "Knie hinten"], ["ruecken", "Unterer Rücken"],
-  ["nacken", "Nacken / Schultern"], ["taube_haende", "Taube Hände"], ["taube_fuesse", "Taube Füße"],
-  ["sitzbeschwerden", "Sitzbeschwerden"],
-];
+const GOALS = ["comfort", "sport", "race"];
+const COMPLAINTS = ["knee_front", "knee_back", "lower_back", "neck", "numb_hands", "numb_feet", "saddle_pain"];
+
+// Radio cards; texts come from "<prefix>.<value>" as [title, description].
+const radioCards = (name, prefix, values, current) => values.map((v) => {
+  const [title, desc] = t(`${prefix}.${v}`);
+  return `<label class="choice"><input type="radio" name="${name}" value="${v}" ${current === v ? "checked" : ""}>
+    <span><strong>${title}</strong><small>${desc}</small></span></label>`;
+}).join("");
 
 async function viewConversation() {
-  const r = await api("/api/fahrer");
+  const r = await api("/api/rider");
   render(`
     <section class="narrow">
-      <h1>Erzähl mal: Was willst du auf dem Rad?</h1>
-      <p class="lead">Davon hängt ab, wie sportlich deine Position sein darf. Ein Fitter fragt das als Erstes.</p>
+      <h1>${t("talk.title")}</h1>
+      <p class="lead">${t("talk.lead")}</p>
       <form id="f" class="card stack">
         <fieldset>
-          <legend class="legend">Dein Ziel</legend>
-          <div class="choices">${GOALS.map(([v, t, d]) => `
-            <label class="choice"><input type="radio" name="ziel" value="${v}" ${r.ziel === v ? "checked" : ""}>
-            <span><strong>${t}</strong><small>${d}</small></span></label>`).join("")}</div>
+          <legend class="legend">${t("talk.goal")}</legend>
+          <div class="choices">${radioCards("goal", "goal", GOALS, r.goal)}</div>
         </fieldset>
         <fieldset>
-          <legend class="legend">Hast du Beschwerden auf dem Rad?</legend>
-          <p class="muted small">Mehrfachauswahl. Nichts wählen, wenn alles gut ist.</p>
-          <div class="chips">${COMPLAINTS.map(([v, t]) => `
-            <label class="choice"><input type="checkbox" name="beschwerden" value="${v}" ${r.beschwerden.includes(v) ? "checked" : ""}>
-            <span>${t}</span></label>`).join("")}</div>
+          <legend class="legend">${t("talk.complaints")}</legend>
+          <p class="muted small">${t("talk.complaints_hint")}</p>
+          <div class="chips">${COMPLAINTS.map((v) => `
+            <label class="choice"><input type="checkbox" name="complaints" value="${v}" ${r.complaints.includes(v) ? "checked" : ""}>
+            <span>${t("complaint." + v)}</span></label>`).join("")}</div>
         </fieldset>
       </form>
       <div class="actions">
-        <a class="btn btn-ghost" href="#/">${icon("arrowLeft", "sm")} Zurück</a>
-        <button class="btn btn-primary" form="f" type="submit">${btnIcon("arrowRight")} Weiter</button>
+        <a class="btn btn-ghost" href="#/">${icon("arrowLeft", "sm")} ${t("back")}</a>
+        <button class="btn btn-primary" form="f" type="submit">${btnIcon("arrowRight")} ${t("next")}</button>
       </div>
     </section>`, 0);
   document.getElementById("f").addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    await api("/api/fahrer", { method: "PUT", body: { ...r, ziel: fd.get("ziel") || "sport", beschwerden: fd.getAll("beschwerden") } });
-    location.hash = "#/koerper";
+    await api("/api/rider", { method: "PUT", body: { ...r, goal: fd.get("goal") || "sport", complaints: fd.getAll("complaints") } });
+    location.hash = "#/body";
   });
 }
 
 // ---------------------------------------------------------------- step 2: body
-const FLEX = [
-  ["gering", "Eingeschränkt", "Fingerspitzen kommen höchstens bis zum Schienbein"],
-  ["mittel", "Mittel", "Fingerspitzen erreichen Knöchel oder Zehen"],
-  ["gut", "Gut", "Handflächen oder Fingerknöchel erreichen den Boden"],
-];
+const FLEX = ["low", "medium", "high"];
 
 function numberField(name, label, value, unit, hint = "", attrs = "") {
   return `<div class="field">
@@ -239,109 +231,106 @@ function validate(form, rules) {
 }
 
 async function viewBody() {
-  const r = await api("/api/fahrer");
+  const r = await api("/api/rider");
   render(`
     <section class="narrow">
-      <h1>Jetzt zu dir</h1>
-      <p class="lead">Mit Größe und Schrittlänge prüft die Software, ob die Messung im Video plausibel ist, und berechnet einen Startwert für die Sattelhöhe.</p>
+      <h1>${t("body.title")}</h1>
+      <p class="lead">${t("body.lead")}</p>
       <form id="f" class="card stack" novalidate>
         <div class="grid-2">
-          ${numberField("groesse_cm", "Körpergröße", r.groesse_cm, "cm", "", 'min="120" max="220"')}
-          ${numberField("schrittlaenge_cm", "Schrittlänge", r.schrittlaenge_cm, "cm",
-            "Barfuß an die Wand, Buch fest zwischen die Beine ziehen, Oberkante bis Boden messen.", 'min="50" max="110"')}
+          ${numberField("height_cm", t("body.height"), r.height_cm, "cm", "", 'min="120" max="220"')}
+          ${numberField("inseam_cm", t("body.inseam"), r.inseam_cm, "cm", t("body.inseam_hint"), 'min="50" max="110"')}
         </div>
         <fieldset>
-          <legend class="legend">Beweglichkeit</legend>
-          <p class="muted small">Im Stand mit gestreckten Beinen langsam nach vorn beugen. Wie weit kommst du?</p>
-          <div class="choices">${FLEX.map(([v, t, d]) => `
-            <label class="choice"><input type="radio" name="beweglichkeit" value="${v}" ${r.beweglichkeit === v ? "checked" : ""}>
-            <span><strong>${t}</strong><small>${d}</small></span></label>`).join("")}</div>
+          <legend class="legend">${t("body.flex")}</legend>
+          <p class="muted small">${t("body.flex_hint")}</p>
+          <div class="choices">${radioCards("flexibility", "flex", FLEX, r.flexibility)}</div>
         </fieldset>
       </form>
       <div class="actions">
-        <a class="btn btn-ghost" href="#/gespraech">${icon("arrowLeft", "sm")} Zurück</a>
-        <button class="btn btn-primary" form="f" type="submit">${btnIcon("arrowRight")} Weiter</button>
+        <a class="btn btn-ghost" href="#/interview">${icon("arrowLeft", "sm")} ${t("back")}</a>
+        <button class="btn btn-primary" form="f" type="submit">${btnIcon("arrowRight")} ${t("next")}</button>
       </div>
     </section>`, 1);
   document.getElementById("f").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = e.target;
     const ok = validate(f, {
-      groesse_cm: (v) => (v == null ? "Bitte deine Körpergröße angeben." : v < 120 || v > 220 ? "Bitte in Zentimetern angeben, z. B. 182." : ""),
-      schrittlaenge_cm: (v) => (v != null && (v < 50 || v > 110) ? "Bitte in Zentimetern angeben, z. B. 86." : ""),
+      height_cm: (v) => (v == null ? t("body.height_missing") : v < 120 || v > 220 ? t("body.height_range") : ""),
+      inseam_cm: (v) => (v != null && (v < 50 || v > 110) ? t("body.inseam_range") : ""),
     });
     if (!ok) return;
     const fd = new FormData(f);
-    await api("/api/fahrer", { method: "PUT", body: { ...r, groesse_cm: num(fd.get("groesse_cm")),
-      schrittlaenge_cm: num(fd.get("schrittlaenge_cm")), beweglichkeit: fd.get("beweglichkeit") || "mittel" } });
-    location.hash = "#/rad";
+    await api("/api/rider", { method: "PUT", body: { ...r, height_cm: num(fd.get("height_cm")),
+      inseam_cm: num(fd.get("inseam_cm")), flexibility: fd.get("flexibility") || "medium" } });
+    location.hash = "#/bike";
   });
 }
 
 // ---------------------------------------------------------------- step 3: bike
+const SETTINGS = [["saddle_height_mm", "bike.saddle_height"], ["saddle_setback_mm", "bike.setback"],
+  ["stem_mm", "bike.stem"], ["spacer_mm", "bike.spacer"]];
+
 async function viewBike() {
-  const [bikes, brands, models] = await Promise.all([api("/api/raeder"), api("/api/marken"), api("/api/modelle")]);
+  const [bikes, brands, models] = await Promise.all([api("/api/bikes"), api("/api/brands"), api("/api/models")]);
   const byBrand = {};
-  for (const m of models) (byBrand[m.marke] ||= []).push(m);
-  let selected = bikes.length ? bikes[bikes.length - 1].id : "neu";
+  for (const m of models) (byBrand[m.brand] ||= []).push(m);
+  let selected = bikes.length ? bikes[bikes.length - 1].id : "new";
   const draw = () => {
-    const b = bikes.find((x) => x.id === selected) || { typ: "rennrad" };
+    const b = bikes.find((x) => x.id === selected) || { type: "road" };
     render(`
       <section class="narrow">
-        <h1>Welches Rad fitten wir?</h1>
-        <p class="lead">Wichtig ist vor allem die Kurbellänge: Daraus berechnet die Software den Maßstab in Millimetern.
-        Mit den aktuellen Einstellungen bekommst du Empfehlungen als konkrete Zahl, z. B. „Sattel auf 749 mm“.</p>
-        ${bikes.length ? `<div class="card"><fieldset><legend class="legend">Deine Garage</legend><div class="choices">
+        <h1>${t("bike.title")}</h1>
+        <p class="lead">${t("bike.lead")}</p>
+        ${bikes.length ? `<div class="card"><fieldset><legend class="legend">${t("bike.garage")}</legend><div class="choices">
           ${bikes.map((x) => `<label class="choice"><input type="radio" name="sel" value="${x.id}" ${x.id === selected ? "checked" : ""}>
-            <span><strong>${esc([x.marke, x.modell].filter(Boolean).join(" ") || "Rad")}</strong><small>${esc(x.rahmengroesse || "")} ${x.kurbel_mm ? "· Kurbel " + fmt(x.kurbel_mm, 1) + " mm" : ""}</small></span></label>`).join("")}
-          <label class="choice"><input type="radio" name="sel" value="neu" ${selected === "neu" ? "checked" : ""}><span><strong>${icon("plus", "sm")} Neues Rad</strong><small>Zur Garage hinzufügen</small></span></label>
+            <span><strong>${esc([x.brand, x.model].filter(Boolean).join(" ") || t("bike"))}</strong><small>${esc(x.frame_size || "")} ${x.crank_mm ? "· " + t("bike.crank_short", { mm: fmt(x.crank_mm, 1) }) : ""}</small></span></label>`).join("")}
+          <label class="choice"><input type="radio" name="sel" value="new" ${selected === "new" ? "checked" : ""}><span><strong>${icon("plus", "sm")} ${t("bike.new")}</strong><small>${t("bike.new_hint")}</small></span></label>
         </div></fieldset></div>` : ""}
         <form id="f" class="card stack" novalidate>
           <div class="preset">
-            <h3>Aus dem Katalog <span class="muted small">(füllt Modell, Größe, Kurbel und Geometrie aus)</span></h3>
+            <h3>${t("bike.catalog")} <span class="muted small">${t("bike.catalog_hint")}</span></h3>
             <div class="grid-2">
-              <div class="field"><label for="preset">Modell</label>
-                <select id="preset"><option value="">Anderes Rad, selbst eintragen</option>
+              <div class="field"><label for="preset">${t("bike.model")}</label>
+                <select id="preset"><option value="">${t("bike.other")}</option>
                   ${Object.keys(byBrand).sort((a, z) => a.localeCompare(z)).map((brand) => `<optgroup label="${esc(brand)}">
-                    ${byBrand[brand].map((m) => `<option value="${m.id}">${esc(m.marke + " " + m.modell)} (${esc(m.jahre)})</option>`).join("")}</optgroup>`).join("")}
+                    ${byBrand[brand].map((m) => `<option value="${m.id}">${esc(m.brand + " " + m.model)} (${esc(m.years)})</option>`).join("")}</optgroup>`).join("")}
                 </select></div>
-              <div class="field"><label for="preset-size">Rahmengröße</label>
-                <select id="preset-size" disabled><option value="">Erst Modell wählen</option></select></div>
+              <div class="field"><label for="preset-size">${t("bike.size")}</label>
+                <select id="preset-size" disabled><option value="">${t("bike.pick_model")}</option></select></div>
             </div>
-            <p class="muted small" id="preset-note" hidden>Werte laut Hersteller-Geometrie. Die Kurbellänge ist die Serienausstattung, prüf sie bitte auf der Innenseite deiner Kurbel.</p>
+            <p class="muted small" id="preset-note" hidden>${t("bike.preset_note")}</p>
           </div>
           <div class="grid-3">
-            <div class="field"><label for="marke">Marke</label>
-              <input id="marke" name="marke" type="text" list="brands" value="${esc(b.marke)}" autocomplete="off">
+            <div class="field"><label for="brand">${t("bike.brand")}</label>
+              <input id="brand" name="brand" type="text" list="brands" value="${esc(b.brand)}" autocomplete="off">
               <datalist id="brands">${brands.map((x) => `<option value="${esc(x)}">`).join("")}</datalist></div>
-            <div class="field"><label for="modell">Modell</label><input id="modell" name="modell" type="text" value="${esc(b.modell)}"></div>
-            <div class="field"><label for="rahmengroesse">Rahmengröße</label><input id="rahmengroesse" name="rahmengroesse" type="text" value="${esc(b.rahmengroesse)}"></div>
+            <div class="field"><label for="model">${t("bike.model")}</label><input id="model" name="model" type="text" value="${esc(b.model)}"></div>
+            <div class="field"><label for="frame_size">${t("bike.size")}</label><input id="frame_size" name="frame_size" type="text" value="${esc(b.frame_size)}"></div>
           </div>
-          <fieldset><legend class="legend">Art des Rads</legend><div class="choices">
-            <label class="choice"><input type="radio" name="typ" value="rennrad" ${b.typ !== "zeitfahren" ? "checked" : ""}><span><strong>Rennrad</strong><small>Hände am Bremsgriff oder Unterlenker</small></span></label>
-            <label class="choice"><input type="radio" name="typ" value="zeitfahren" ${b.typ === "zeitfahren" ? "checked" : ""}><span><strong>Zeitfahren / Triathlon</strong><small>Mit Aufleger</small></span></label>
+          <fieldset><legend class="legend">${t("bike.type")}</legend><div class="choices">
+            ${radioCards("type", "type", ["road", "tt"], b.type === "tt" ? "tt" : "road")}
           </div></fieldset>
-          ${numberField("kurbel_mm", "Kurbellänge", b.kurbel_mm, "mm", "Steht innen auf der Kurbel, meist 165 bis 175.", 'min="150" max="185"')}
-          <h3>Aktuelle Einstellungen <span class="muted small">(optional, sehr empfohlen)</span></h3>
+          ${numberField("crank_mm", t("bike.crank"), b.crank_mm, "mm", t("bike.crank_hint"), 'min="150" max="185"')}
+          <h3>${t("bike.settings")} <span class="muted small">${t("bike.settings_hint")}</span></h3>
           <div class="grid-2">
-            ${numberField("sattelhoehe_mm", "Sattelhöhe", b.sattelhoehe_mm, "mm", "Mitte Tretlager bis Oberkante Sattel, entlang des Sitzrohrs.")}
-            ${numberField("sattelversatz_mm", "Sattelversatz", b.sattelversatz_mm, "mm", "Waagerecht: Sattelspitze hinter Tretlagermitte.")}
-            ${numberField("vorbau_mm", "Vorbaulänge", b.vorbau_mm, "mm", "Steht auf dem Vorbau.")}
-            ${numberField("spacer_mm", "Spacer unter dem Vorbau", b.spacer_mm, "mm")}
+            ${numberField("saddle_height_mm", t("bike.saddle_height"), b.saddle_height_mm, "mm", t("bike.saddle_height_hint"))}
+            ${numberField("saddle_setback_mm", t("bike.setback"), b.saddle_setback_mm, "mm", t("bike.setback_hint"))}
+            ${numberField("stem_mm", t("bike.stem"), b.stem_mm, "mm", t("bike.stem_hint"))}
+            ${numberField("spacer_mm", t("bike.spacer"), b.spacer_mm, "mm")}
           </div>
-          <details class="more"><summary>Rahmengeometrie (optional)</summary>
-            <p class="muted small">Für die Messung nicht nötig. Hilft später, deine Position auf ein anderes Rad zu übertragen.
-            Die Werte stehen auf der Herstellerseite unter „Geometrie“ für deine Rahmengröße.</p>
+          <details class="more"><summary>${t("bike.geometry")}</summary>
+            <p class="muted small">${t("bike.geometry_hint")}</p>
             <div class="grid-3">
               ${numberField("stack_mm", "Stack", b.stack_mm, "mm")}
               ${numberField("reach_mm", "Reach", b.reach_mm, "mm")}
-              ${numberField("sitzwinkel_grad", "Sitzwinkel", b.sitzwinkel_grad, "°")}
+              ${numberField("seat_angle_deg", t("bike.seat_angle"), b.seat_angle_deg, "°")}
             </div>
           </details>
         </form>
         <div class="actions">
-          <a class="btn btn-ghost" href="#/koerper">${icon("arrowLeft", "sm")} Zurück</a>
-          <button class="btn btn-primary" form="f" type="submit">${btnIcon("arrowRight")} Rad speichern und weiter</button>
+          <a class="btn btn-ghost" href="#/body">${icon("arrowLeft", "sm")} ${t("back")}</a>
+          <button class="btn btn-primary" form="f" type="submit">${btnIcon("arrowRight")} ${t("bike.save")}</button>
         </div>
       </section>`, 2);
     main.querySelectorAll('input[name="sel"]').forEach((el) => el.addEventListener("change", () => { selected = el.value; draw(); }));
@@ -349,85 +338,73 @@ async function viewBike() {
     presetSel.addEventListener("change", () => {
       const m = models[presetSel.value];
       sizeSel.disabled = !m;
-      sizeSel.innerHTML = m ? `<option value="">Größe wählen</option>` + m.groessen.map((g, i) => `<option value="${i}">${esc(g.groesse)}</option>`).join("")
-        : `<option value="">Erst Modell wählen</option>`;
+      sizeSel.innerHTML = m ? `<option value="">${t("bike.pick_size")}</option>` + m.sizes.map((g, i) => `<option value="${i}">${esc(g.size)}</option>`).join("")
+        : `<option value="">${t("bike.pick_model")}</option>`;
       if (!m) return;
       const f = document.getElementById("f");
-      f.elements.marke.value = m.marke;
-      f.elements.modell.value = `${m.modell} (${m.jahre})`;
+      f.elements.brand.value = m.brand;
+      f.elements.model.value = `${m.model} (${m.years})`;
       sizeSel.focus();
     });
     sizeSel.addEventListener("change", () => {
-      const m = models[presetSel.value], g = m && m.groessen[sizeSel.value];
+      const m = models[presetSel.value], g = m && m.sizes[sizeSel.value];
       if (!g) return;
       const f = document.getElementById("f");
-      f.elements.rahmengroesse.value = g.groesse;
-      for (const k of ["kurbel_mm", "stack_mm", "reach_mm", "sitzwinkel_grad"]) if (g[k] != null) f.elements[k].value = g[k];
+      f.elements.frame_size.value = g.size;
+      for (const k of ["crank_mm", "stack_mm", "reach_mm", "seat_angle_deg"]) if (g[k] != null) f.elements[k].value = g[k];
       f.querySelector("details.more").open = true;
       document.getElementById("preset-note").hidden = false;
     });
     document.getElementById("f").addEventListener("submit", async (e) => {
       e.preventDefault();
       const f = e.target;
-      if (!validate(f, { kurbel_mm: (v) => (v == null ? "Ohne Kurbellänge gibt es keine Angaben in Millimetern. Bitte eintragen." : v < 150 || v > 185 ? "Bitte in Millimetern, z. B. 172.5." : "") })) return;
+      if (!validate(f, { crank_mm: (v) => (v == null ? t("bike.crank_missing") : v < 150 || v > 185 ? t("bike.crank_range") : "") })) return;
       const fd = new FormData(f);
-      const data = { id: selected === "neu" ? undefined : selected, typ: fd.get("typ") };
-      for (const k of ["marke", "modell", "rahmengroesse"]) data[k] = fd.get(k).trim();
-      for (const k of ["kurbel_mm", "sattelhoehe_mm", "sattelversatz_mm", "vorbau_mm", "spacer_mm", "stack_mm", "reach_mm", "sitzwinkel_grad"]) data[k] = num(fd.get(k));
-      const bike = await api("/api/raeder", { method: "POST", body: data });
+      const data = { id: selected === "new" ? undefined : selected, type: fd.get("type") };
+      for (const k of ["brand", "model", "frame_size"]) data[k] = fd.get(k).trim();
+      for (const k of ["crank_mm", "saddle_height_mm", "saddle_setback_mm", "stem_mm", "spacer_mm", "stack_mm", "reach_mm", "seat_angle_deg"]) data[k] = num(fd.get(k));
+      const bike = await api("/api/bikes", { method: "POST", body: data });
       // Coming back from a running fitting with the same bike continues it.
-      const sid = active && active.rad_id === bike.id ? active.id
-        : (await api("/api/sitzungen", { method: "POST", body: { rad_id: bike.id } })).id;
-      location.hash = `#/sitzung/${sid}/video`;
+      const sid = active && active.bike_id === bike.id ? active.id
+        : (await api("/api/sessions", { method: "POST", body: { bike_id: bike.id } })).id;
+      location.hash = `#/session/${sid}/video`;
     });
   };
   draw();
 }
 
 // ---------------------------------------------------------------- step 4: video
-const RECORDING = [
-  "Handy seitlich vom Rad, 2,5 bis 4 m entfernt, genau quer zum Rad",
-  "Kamera auf Höhe von Hüfte bis Tretlager, gerade (nicht gekippt)",
-  "Du und das ganze Rad im Bild, Querformat",
-  "Eng anliegende Kleidung, helles Licht",
-  "2 Minuten warm fahren, dann mindestens 60 Sekunden bei 85 bis 95 U/min filmen",
-  "Hände ruhig am Bremsgriff lassen, nicht in die Kamera winken",
-];
-
 async function viewVideo(sid) {
-  const s = await api(`/api/sitzungen/${sid}`);
+  const s = await api(`/api/sessions/${sid}`);
   trackSession(s);
-  const next = s.runden.length + 1;
-  const bike = s.rad || {};
-  const last = [...s.runden].reverse().find((r) => r.status === "fertig");
+  const next = s.rounds.length + 1;
+  const bike = s.bike || {};
+  const last = [...s.rounds].reverse().find((r) => r.status === "done");
   render(`
     <section class="narrow">
-      <h1>${next === 1 ? "Zeit fürs Video" : `Runde ${next}: Hast du etwas verstellt?`}</h1>
-      <p class="lead">${next === 1 ? "Ein gutes Video ist die halbe Miete. Achte auf diese Punkte:" :
-        "Trag ein, was du geändert hast, und lade ein neues Video hoch. Die Software vergleicht dann mit der letzten Runde."}</p>
-      ${next === 1 ? `<div class="card"><ul class="checklist">${RECORDING.map((t) => `<li><span class="tick">${icon("check", "sm")}</span><span>${t}</span></li>`).join("")}</ul></div>` : `
-      ${last?.ergebnis ? `<div class="card"><h3>Letzte Empfehlung</h3>${last.ergebnis.recommendations.map((t) => `<p class="tip">${esc(t)}</p>`).join("")}</div>` : ""}`}
+      <h1>${next === 1 ? t("video.title_first") : t("video.title_next", { n: next })}</h1>
+      <p class="lead">${next === 1 ? t("video.lead_first") : t("video.lead_next")}</p>
+      ${next === 1 ? `<div class="card"><ul class="checklist">${t("video.recording").map((x) => `<li><span class="tick">${icon("check", "sm")}</span><span>${x}</span></li>`).join("")}</ul></div>` : `
+      ${last?.result ? `<div class="card"><h3>${t("video.last_advice")}</h3>${last.result.recommendations.map((x) => `<p class="tip">${esc(x)}</p>`).join("")}</div>` : ""}`}
       <form id="f" class="card stack" novalidate>
+        <input type="hidden" name="lang" value="${lang}">
         ${next > 1 ? `
         <div class="grid-2">
-          ${numberField("sattelhoehe_mm", "Sattelhöhe jetzt", bike.sattelhoehe_mm, "mm")}
-          ${numberField("sattelversatz_mm", "Sattelversatz jetzt", bike.sattelversatz_mm, "mm")}
-          ${numberField("vorbau_mm", "Vorbaulänge jetzt", bike.vorbau_mm, "mm")}
-          ${numberField("spacer_mm", "Spacer jetzt", bike.spacer_mm, "mm")}
+          ${SETTINGS.map(([k, label]) => numberField(k, k === "spacer_mm" ? t("video.spacer_now") : t("video.now", { field: t(label) }), bike[k], "mm")).join("")}
         </div>
-        <div class="field"><label for="aenderung">Was hast du sonst verändert?</label><input id="aenderung" name="aenderung" type="text" placeholder="z. B. Sattel 5 mm tiefer"></div>` : ""}
+        <div class="field"><label for="change">${t("video.change")}</label><input id="change" name="change" type="text" placeholder="${esc(t("video.change_placeholder"))}"></div>` : ""}
         <label class="drop" id="drop" for="video">
           <span class="bubble">${icon("upload")}</span>
-          <strong id="drop-text">Video hier ablegen oder klicken zum Auswählen</strong>
-          <span class="muted small">MP4 oder MOV direkt vom Handy</span>
+          <strong id="drop-text">${t("video.drop")}</strong>
+          <span class="muted small">${t("video.formats")}</span>
           <input id="video" name="video" type="file" accept="video/*" hidden>
         </label>
-        <div id="up" hidden><div class="progress" role="progressbar" aria-label="Hochladen" aria-valuemin="0" aria-valuemax="100"><div></div></div>
-          <p class="muted small" id="up-text">Lade hoch ...</p></div>
+        <div id="up" hidden><div class="progress" role="progressbar" aria-label="${t("video.upload_label")}" aria-valuemin="0" aria-valuemax="100"><div></div></div>
+          <p class="muted small" id="up-text">${t("video.uploading")}</p></div>
       </form>
       <div class="actions">
-        <a class="btn btn-ghost" href="${next === 1 ? "#/rad" : `#/sitzung/${sid}`}">${icon("arrowLeft", "sm")} Zurück</a>
-        <button class="btn btn-primary" form="f" type="submit" id="go" disabled>${btnIcon("arrowRight")} Analyse starten</button>
+        <a class="btn btn-ghost" href="${next === 1 ? "#/bike" : `#/session/${sid}`}">${icon("arrowLeft", "sm")} ${t("back")}</a>
+        <button class="btn btn-primary" form="f" type="submit" id="go" disabled>${btnIcon("arrowRight")} ${t("video.start")}</button>
       </div>
     </section>`, 3);
   const input = document.getElementById("video");
@@ -458,14 +435,14 @@ async function viewVideo(sid) {
       const p = Math.round((ev.loaded / ev.total) * 100);
       bar.firstElementChild.style.width = p + "%";
       bar.setAttribute("aria-valuenow", p);
-      document.getElementById("up-text").textContent = `Lade hoch ... ${p} %`;
+      document.getElementById("up-text").textContent = `${t("video.uploading")} ${p} %`;
     };
     xhr.onload = () => {
-      if (xhr.status < 300) location.hash = `#/sitzung/${sid}`;
-      else { toast("Hochladen fehlgeschlagen. Bitte erneut versuchen."); go.disabled = false; }
+      if (xhr.status < 300) location.hash = `#/session/${sid}`;
+      else { toast(t("video.upload_failed")); go.disabled = false; }
     };
-    xhr.onerror = () => { toast("Verbindung zum Programm verloren."); go.disabled = false; };
-    xhr.open("POST", `/api/sitzungen/${sid}/runden`);
+    xhr.onerror = () => { toast(t("video.connection_lost")); go.disabled = false; };
+    xhr.open("POST", withLang(`/api/sessions/${sid}/rounds`));
     xhr.send(fd);
   });
 }
@@ -475,33 +452,32 @@ let pollTimer = null;
 
 async function viewSession(sid, shownNr) {
   clearTimeout(pollTimer);
-  const s = await api(`/api/sitzungen/${sid}`);
+  const s = await api(`/api/sessions/${sid}`);
   trackSession(s);
-  if (!s.runden.length) { location.hash = `#/sitzung/${sid}/video`; return; }
-  const last = s.runden[s.runden.length - 1];
-  if (last.status === "wartet" || last.status === "laeuft") return viewProgress(s, last);
-  const finished = s.runden.filter((r) => r.status === "fertig");
-  if (last.status === "fehler" && (!finished.length || shownNr == null)) return viewError(s, last);
+  if (!s.rounds.length) { location.hash = `#/session/${sid}/video`; return; }
+  const last = s.rounds[s.rounds.length - 1];
+  if (last.status === "queued" || last.status === "running") return viewProgress(s, last);
+  const finished = s.rounds.filter((r) => r.status === "done");
+  if (last.status === "error" && (!finished.length || shownNr == null)) return viewError(s, last);
   const nr = shownNr ?? finished[finished.length - 1].nr;
   return viewResult(s, finished, nr);
 }
 
 function viewProgress(s, r) {
-  const pct = Math.round((r.fortschritt || 0) * 100);
+  const pct = Math.round((r.progress || 0) * 100);
   const same = document.getElementById("analysis-progress");
   if (same) {
     same.firstElementChild.style.width = pct + "%";
     same.setAttribute("aria-valuenow", pct);
-    document.getElementById("analysis-text").textContent = `${r.meldung} · ${pct} %`;
+    document.getElementById("analysis-text").textContent = `${r.message} · ${pct} %`;
   } else {
     render(`
       <section class="narrow">
-        <h1>Runde ${r.nr} wird ausgewertet</h1>
-        <p class="lead">Die Software sucht in jedem Bild deine Gelenke, erkennt die Kurbelumdrehungen und berechnet die Winkel.
-        Das dauert etwa so lange wie das Video, manchmal etwas länger. Du kannst das Fenster offen lassen.</p>
+        <h1>${t("progress.title", { n: r.nr })}</h1>
+        <p class="lead">${t("progress.lead")}</p>
         <div class="card stack">
-          <div class="progress" id="analysis-progress" role="progressbar" aria-label="Analyse" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><div style="width:${pct}%"></div></div>
-          <p class="muted" id="analysis-text" aria-live="polite">${esc(r.meldung)} · ${pct} %</p>
+          <div class="progress" id="analysis-progress" role="progressbar" aria-label="${t("progress.label")}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><div style="width:${pct}%"></div></div>
+          <p class="muted" id="analysis-text" aria-live="polite">${esc(r.message)} · ${pct} %</p>
         </div>
       </section>`, 4);
   }
@@ -511,11 +487,11 @@ function viewProgress(s, r) {
 function viewError(s, r) {
   render(`
     <section class="narrow">
-      <h1>Das hat nicht geklappt</h1>
-      <div class="card verdict">${icon("alert")}<div><p class="tip">${esc(r.meldung)}</p>
-      <p class="muted">Meist hilft ein neues Video: länger, gleichmäßig treten, ganze Person im Bild.</p></div></div>
-      <div class="actions"><a class="btn btn-ghost" href="#/">Zur Übersicht</a>
-      <a class="btn btn-primary" href="#/sitzung/${s.id}/video">${btnIcon("upload")} Neues Video hochladen</a></div>
+      <h1>${t("failed.title")}</h1>
+      <div class="card verdict">${icon("alert")}<div><p class="tip">${esc(r.message)}</p>
+      <p class="muted">${t("failed.hint")}</p></div></div>
+      <div class="actions"><a class="btn btn-ghost" href="#/">${t("overview")}</a>
+      <a class="btn btn-primary" href="#/session/${s.id}/video">${btnIcon("upload")} ${t("failed.upload")}</a></div>
     </section>`, 3);
 }
 
@@ -537,45 +513,46 @@ function metricBar(e, prev) {
 
 function viewResult(s, finished, nr) {
   const round = finished.find((r) => r.nr === nr);
-  const res = round.ergebnis;
+  const res = round.result;
   const prevRound = [...finished].reverse().find((r) => r.nr < nr);
-  const prevEval = Object.fromEntries((prevRound?.ergebnis?.evaluation || []).map((e) => [e.key, e]));
+  const prevEval = Object.fromEntries((prevRound?.result?.evaluation || []).map((e) => [e.key, e]));
   const isLatest = nr === finished[finished.length - 1].nr;
   const evals = [...res.evaluation].sort((a, b) => KEY_ORDER.indexOf(a.key) - KEY_ORDER.indexOf(b.key));
-  const value = (v, u) => `${fmt(v)}<small>${u === "°" ? "°" : u}</small>`;
+  const value = (v, u) => `${fmt(v)}<small>${u}</small>`;
+  const unit = (u) => (u === "°" ? "°" : " " + u);
   render(`
     <div class="result-head">
-      <div><h1>${res.done ? "Du sitzt <span class='accent'>super</span>!" : "Deine Auswertung"}</h1>
-      <p class="muted" style="margin:0">Runde ${nr}${round.aenderung ? " · Geändert: " + esc(round.aenderung) : ""}</p></div>
+      <div><h1>${res.done ? t("result.great") : t("result.title")}</h1>
+      <p class="muted" style="margin:0">${t("result.round", { n: nr })}${round.change ? " · " + esc(t("result.changed", { change: round.change })) : ""}</p></div>
       <div class="facts">
-        <span class="fact">${res.cycles}<small>Umdrehungen</small></span>
-        <span class="fact">${fmt(res.cadence_rpm)}<small>U/min</small></span>
-        <span class="fact">${evals.filter((e) => e.status === "ok").length}/${evals.length}<small>im Ziel</small></span>
+        <span class="fact">${res.cycles}<small>${t("result.cycles")}</small></span>
+        <span class="fact">${fmt(res.cadence_rpm)}<small>${t("result.rpm")}</small></span>
+        <span class="fact">${evals.filter((e) => e.status === "ok").length}/${evals.length}<small>${t("result.in_target")}</small></span>
       </div>
     </div>
     <div class="result">
       <div class="video-wrap">
         <div class="card video-card">
-          <video controls playsinline preload="metadata" src="/medien/${s.id}/${nr}/analyse.mp4" aria-label="Video mit erkannten Gelenken, Runde ${nr}"></video>
-          <p class="muted small">Weiß: erkannte Gelenke · Gelb: Pedalkreis und Tretlager</p>
+          <video controls playsinline preload="metadata" src="/media/${s.id}/${nr}/analysis.mp4" aria-label="${t("result.video_label", { n: nr })}"></video>
+          <p class="muted small">${t("result.video_legend")}</p>
         </div>
-        ${finished.length > 1 ? `<div class="rounds" role="group" aria-label="Runde wählen">${finished.map((r) =>
-          `<button class="btn btn-secondary" aria-pressed="${r.nr === nr}" data-nr="${r.nr}">Runde ${r.nr}</button>`).join("")}</div>` : ""}
+        ${finished.length > 1 ? `<div class="rounds" role="group" aria-label="${t("result.pick_round")}">${finished.map((r) =>
+          `<button class="btn btn-secondary" aria-pressed="${r.nr === nr}" data-nr="${r.nr}">${t("result.round", { n: r.nr })}</button>`).join("")}</div>` : ""}
       </div>
       <div class="stack">
         <section class="card lime verdict">
           <div class="top"><span class="bubble">${icon(res.done ? "trophy" : "wrench")}</span>
-            <h2>${res.done ? "Alles im Zielbereich" : "Nächster Schritt"}</h2></div>
-          ${res.recommendations.map((t) => `<p class="tip">${esc(t)}</p>`).join("")}
+            <h2>${res.done ? t("result.all_good") : t("result.next_step")}</h2></div>
+          ${res.recommendations.map((x) => `<p class="tip">${esc(x)}</p>`).join("")}
           ${isLatest ? (res.done
-            ? `<p class="muted" style="margin:0">Notier dir deine Einstellungen. Wenn du magst, kannst du zur Kontrolle noch eine Runde filmen.</p>
-               <a class="btn btn-dark" href="#/sitzung/${s.id}/video">${btnIcon("upload")} Kontrollrunde filmen</a>`
-            : `<a class="btn btn-dark" href="#/sitzung/${s.id}/video">${btnIcon("upload")} Umgesetzt, neues Video hochladen</a>`) : ""}
+            ? `<p class="muted" style="margin:0">${t("result.note_settings")}</p>
+               <a class="btn btn-dark" href="#/session/${s.id}/video">${btnIcon("upload")} ${t("result.control_round")}</a>`
+            : `<a class="btn btn-dark" href="#/session/${s.id}/video">${btnIcon("upload")} ${t("result.applied")}</a>`) : ""}
         </section>
         <section class="card">
-          <h2>Messwerte</h2>
-          <p class="muted small">Grüner Bereich = Ziel, heller Strich = dein Wert${prevRound ? ", grauer Strich = Runde " + prevRound.nr : ""}.
-          Bei Werten außerhalb des Ziels steht direkt dabei, was du am Rad änderst.</p>
+          <h2>${t("result.metrics")}</h2>
+          <p class="muted small">${t("result.legend")}${prevRound ? t("result.legend_prev", { n: prevRound.nr }) : ""}.
+          ${t("result.legend_fix")}</p>
           <ul class="metrics">${evals.map((e) => {
             const p = prevEval[e.key];
             const d = p ? e.value - p.value : null;
@@ -586,42 +563,59 @@ function viewResult(s, finished, nr) {
               <div class="value">${value(e.value, e.unit)}</div>
               ${metricBar(e, p)}
               <div class="foot">
-                <span class="status ${off ? "off" : "ok"}">${off ? (e.status === "hoch" ? "Über dem Ziel" : "Unter dem Ziel") : "Im Ziel"} · ${fmt(e.lo)}–${fmt(e.hi)}${e.unit === "°" ? "°" : " " + e.unit}</span>
-                ${d != null ? `<span class="delta">${d >= 0 ? "+" : "−"}${fmt(Math.abs(d), 1)}${e.unit === "°" ? "°" : " " + e.unit} zu Runde ${prevRound.nr}</span>` : ""}
+                <span class="status ${off ? "off" : "ok"}">${t("status." + e.status)} · ${fmt(e.lo)}–${fmt(e.hi)}${unit(e.unit)}</span>
+                ${d != null ? `<span class="delta">${d >= 0 ? "+" : "−"}${fmt(Math.abs(d), 1)}${unit(e.unit)} ${t("result.vs_round", { n: prevRound.nr })}</span>` : ""}
               </div>
-              ${off && e.korrektur ? `<div class="fix">${icon("wrench", "sm")}<div><span class="step">So korrigierst du es${e.schritt ? " · Schritt " + e.schritt + " von 3" : ""}</span>${esc(e.korrektur)}</div></div>` : ""}
+              ${off && e.fix ? `<div class="fix">${icon("wrench", "sm")}<div><span class="step">${t("result.fix")}${e.step ? t("result.fix_step", { n: e.step }) : ""}</span>${esc(e.fix)}</div></div>` : ""}
             </li>`;
           }).join("")}</ul>
         </section>
-        ${res.warnings.length ? `<section class="card"><h3>${icon("alert", "sm")} Zur Messqualität</h3><ul class="notes">${res.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></section>` : ""}
-        ${res.notes.length ? `<section class="card"><h3>Info</h3><ul class="notes muted">${res.notes.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></section>` : ""}
-        <p class="muted small">Ausgewertet ab Sekunde ${fmt(res.offset_s, 1)} des Videos (Auf- und Absteigen werden automatisch weggeschnitten). Die Software ersetzt keine medizinische Beratung.</p>
-        <button class="btn btn-ghost" id="del">${icon("trash", "sm")} Dieses Fitting löschen</button>
+        ${res.warnings.length ? `<section class="card"><h3>${icon("alert", "sm")} ${t("result.quality")}</h3><ul class="notes">${res.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></section>` : ""}
+        ${res.notes.length ? `<section class="card"><h3>${t("result.info")}</h3><ul class="notes muted">${res.notes.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></section>` : ""}
+        <p class="muted small">${t("result.footer", { s: fmt(res.offset_s, 1) })}</p>
+        <button class="btn btn-ghost" id="del">${icon("trash", "sm")} ${t("delete.this")}</button>
       </div>
     </div>`, 4);
   main.querySelectorAll(".rounds button").forEach((b) => b.addEventListener("click", () => {
-    location.hash = `#/sitzung/${s.id}/runde/${b.dataset.nr}`;
+    location.hash = `#/session/${s.id}/round/${b.dataset.nr}`;
   }));
   document.getElementById("del").addEventListener("click", async () => {
-    if (await deleteSession(s.id, `Fitting vom ${new Date(s.erstellt).toLocaleString("de-DE")}`)) location.hash = "#/";
+    if (await deleteSession(s.id, t("fitting.of", { date: date(s.created) }))) location.hash = "#/";
   });
 }
 
-// ---------------------------------------------------------------- router
+// ---------------------------------------------------------------- chrome + router
+// Texts outside <main> and the language switch in the top bar.
+function drawChrome() {
+  document.documentElement.lang = lang;
+  document.querySelector(".skip").textContent = t("skip");
+  document.querySelector(".brand").setAttribute("aria-label", t("home"));
+  const sw = document.getElementById("lang");
+  sw.setAttribute("aria-label", t("lang.switch"));
+  sw.innerHTML = Object.keys(LANGS).map((code) =>
+    `<button type="button" lang="${code}" aria-pressed="${code === lang}" title="${LANGS[code]}">${code.toUpperCase()}</button>`).join("");
+  sw.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+    if (b.lang === lang) return;
+    setLang(b.lang);
+    route();
+  }));
+}
+
 async function route() {
   const h = location.hash.replace(/^#\/?/, "").split("/");
   try {
-    if (h[0] === "gespraech") await viewConversation();
-    else if (h[0] === "koerper") await viewBody();
-    else if (h[0] === "rad") await viewBike();
-    else if (h[0] === "sitzung" && h[2] === "video") await viewVideo(h[1]);
-    else if (h[0] === "sitzung" && h[2] === "runde") await viewSession(h[1], Number(h[3]));
-    else if (h[0] === "sitzung") await viewSession(h[1]);
+    if (h[0] === "interview") await viewConversation();
+    else if (h[0] === "body") await viewBody();
+    else if (h[0] === "bike") await viewBike();
+    else if (h[0] === "session" && h[2] === "video") await viewVideo(h[1]);
+    else if (h[0] === "session" && h[2] === "round") await viewSession(h[1], Number(h[3]));
+    else if (h[0] === "session") await viewSession(h[1]);
     else await viewStart();
   } catch (err) {
-    render(`<section class="narrow"><h1>Fehler</h1><div class="card"><p>${esc(err.message)}</p>
-      <a class="btn btn-secondary" href="#/">Zur Übersicht</a></div></section>`, null);
+    render(`<section class="narrow"><h1>${t("error.title")}</h1><div class="card"><p>${esc(err.message)}</p>
+      <a class="btn btn-secondary" href="#/">${t("overview")}</a></div></section>`, null);
   }
 }
 window.addEventListener("hashchange", () => { clearTimeout(pollTimer); route(); });
+setLang(lang);
 route();

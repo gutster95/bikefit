@@ -1,4 +1,4 @@
 #!/bin/bash
-# Startet Bikefit mit der eingerichteten Umgebung, z.B. bash bikefit.sh analyse video.mp4
+# Runs Bikefit with the installed environment, e.g. bash bikefit.sh analyze video.mp4
 cd "$(dirname "$0")"
 exec .venv/bin/python -m bikefit "$@"

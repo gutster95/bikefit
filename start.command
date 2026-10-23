@@ -1,11 +1,8 @@
 #!/bin/bash
-# Doppelklick startet Bikefit im Browser (Mac). Beim ersten Mal wird alles installiert.
+# Double-click to start Bikefit in the browser (Mac). The first start installs
+# Python and all packages, later starts only check for updates.
 cd "$(dirname "$0")"
-if [ ! -x .venv/bin/python ]; then
-  echo "Erster Start: Bikefit wird eingerichtet (einige Minuten) ..."
-  bash installieren.sh || { echo "Installation fehlgeschlagen."; read -p "Enter zum Schließen"; exit 1; }
-fi
-echo "Prüfe Pakete ..."
-.venv/bin/pip install -q -r requirements.txt
-echo "Starte Bikefit, der Browser öffnet sich gleich ..."
+[ -x .venv/bin/python ] || echo "First start: setting up Bikefit (a few minutes) ..."
+bash install.sh || { echo "Setup failed."; read -p "Press Enter to close"; exit 1; }
+echo "Starting Bikefit, the browser opens in a moment ..."
 .venv/bin/python -m bikefit web

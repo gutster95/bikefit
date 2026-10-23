@@ -33,7 +33,7 @@ def model_path(variant: str) -> Path:
     path = MODEL_DIR / f"pose_landmarker_{variant}.task"
     if not path.exists():
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        print(f"Lade Pose-Modell '{variant}' herunter (einmalig) ...")
+        print(f"Downloading pose model '{variant}' (once) ...")
         # python.org builds on macOS ship without root certificates -> use certifi
         try:
             import certifi

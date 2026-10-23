@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from bikefit import metrics, targets
-from bikefit.analysis import analyze_track
+from bikefit.analysis import analyze_track, localize, result_data
 from bikefit.tracks import Track, lowpass
 
 MM_PER_PX = 2.0
@@ -84,7 +84,7 @@ def test_saddle_recommendation_closes_the_gap():
     res = analyze_track(track, CRANK)
     ext = res.summary["knee_extension"]["median"]
     assert ext < 30
-    assert "senken" in res.tips[0]
+    assert "Lower" in localize(result_data(res), "en")["recommendations"][0]
     target = 30 + 2
     delta = targets.saddle_height_change_mm(ext, target, res.segments["thigh_px"] * MM_PER_PX,
                                             res.segments["shank_px"] * MM_PER_PX)
@@ -130,7 +130,7 @@ def test_cleaning_repairs_swaps_and_jumps():
     clean_track = build_track(raw, track.fps, side="right")
     clean = analyze_track(clean_track, CRANK)
     true_ext = truth["knee_flexion"].min()
-    assert clean_track.corrections["beine_vertauscht"] >= 35
+    assert clean_track.corrections["leg_swaps"] >= 35
     assert abs(clean.summary["knee_extension"]["median"] - true_ext) < 1.0
     # the median hides single bad frames; the worst cycle shows them
     worst = lambda res: max(abs(r["knee_extension"] - true_ext) for r in res.rows)

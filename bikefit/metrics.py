@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.signal import find_peaks
 
+from .i18n import AnalysisError
 from .tracks import Track
 
 
@@ -52,7 +53,7 @@ def estimate_period(signal: np.ndarray, fps: float, rpm_range=(40, 140)) -> floa
     lo = int(fps * 60 / rpm_range[1])
     hi = min(int(fps * 60 / rpm_range[0]), len(ac) - 1)
     if hi <= lo:
-        raise ValueError("Aufnahme zu kurz, um Kurbelumdrehungen zu erkennen.")
+        raise AnalysisError("error.too_short")
     return float(lo + np.argmax(ac[lo:hi]))
 
 

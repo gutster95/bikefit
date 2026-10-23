@@ -7,6 +7,7 @@ import numpy as np
 from scipy.signal import butter, filtfilt
 
 from . import cleaning
+from .i18n import AnalysisError
 from .pose import JOINTS
 
 MIN_VISIBILITY = 0.3
@@ -39,7 +40,7 @@ def choose_side(raw: list) -> str:
         for side in z:
             z[side].append(np.mean([det[side][j][2] for j in ("hip", "knee", "ankle")]))
     if not z["left"]:
-        raise ValueError("Im Video wurde keine Person erkannt.")
+        raise AnalysisError("error.no_person")
     return "left" if np.median(z["left"]) < np.median(z["right"]) else "right"
 
 
@@ -121,10 +122,10 @@ def build_track(raw: list, fps: float, side: str = "auto", smooth: bool = True,
     corrections = {}
     if clean:
         far = raw_arrays(raw, "right" if side == "left" else "left")
-        corrections["beine_vertauscht"] = cleaning.fix_leg_swaps(arrays, far)
+        corrections["leg_swaps"] = cleaning.fix_leg_swaps(arrays, far)
         thigh = float(np.nanmedian(np.linalg.norm(arrays["hip"] - arrays["knee"], axis=1)))
-        corrections["spruenge"] = cleaning.reject_jumps(arrays, fps, thigh)
-        corrections["segmentlaenge"] = cleaning.reject_bad_segments(arrays, fps)
+        corrections["jumps"] = cleaning.reject_jumps(arrays, fps, thigh)
+        corrections["bad_segments"] = cleaning.reject_bad_segments(arrays, fps)
     points = {}
     for j, a in arrays.items():
         a = fill_gaps(a)

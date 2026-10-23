@@ -296,3 +296,14 @@ dialog.confirm .row { justify-content: flex-end; margin-top: var(--space-md); }
   .stepper li[aria-current="step"] { padding-right: 0; }
   .stepper li[aria-current="step"] > .step { padding-right: 14px; }
 }
+
+/* language switch (DE / EN pill) */
+.lang-switch { display: flex; gap: 2px; margin-left: auto; padding: 4px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 999px; }
+.stepper:not([hidden]) + .lang-switch { margin-left: 0; }
+.lang-switch button { min-width: 44px; min-height: 36px; border: 0; border-radius: 999px; background: transparent; color: var(--color-muted-foreground); font: 700 .85rem var(--font); letter-spacing: .04em; cursor: pointer; transition: background-color var(--dur-fast), color var(--dur-fast); }
+.lang-switch button:hover { color: var(--color-foreground); }
+.lang-switch button[aria-pressed="true"] { background: var(--color-lime); color: var(--color-on-lime); }
+@media (max-width: 900px) {
+  .stepper { order: 2; }
+  .stepper:not([hidden]) + .lang-switch { margin-left: auto; }
+}

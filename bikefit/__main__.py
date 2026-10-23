@@ -1,44 +1,44 @@
-"""Command line entry point: python -m bikefit <befehl> ..."""
+"""Command line entry point: python -m bikefit <command> ..."""
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
-SIDES = {"auto": "auto", "links": "left", "rechts": "right"}
-
 
 def main():
-    parser = argparse.ArgumentParser(prog="bikefit", description="Bikefit: Gelenkwinkel auf dem Rad messen.")
+    parser = argparse.ArgumentParser(prog="bikefit", description="Bikefit: measure joint angles on the bike.")
+    parser.add_argument("--lang", choices=["en", "de"], default="en", help="Language of reports and messages")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    a = sub.add_parser("analyse", help="Ein aufgenommenes Video auswerten")
+    a = sub.add_parser("analyze", help="Analyse a recorded video")
     a.add_argument("video", type=Path)
-    a.add_argument("--kurbel", type=float, help="Kurbellänge in mm, z.B. 172.5 (für Angaben in mm)")
-    a.add_argument("--seite", choices=SIDES, default="auto", help="Körperseite zur Kamera")
-    a.add_argument("--modell", choices=["lite", "full", "heavy"], default="heavy")
-    a.add_argument("--profil", choices=["rennrad", "zeitfahren"],
-                   help="Zielbereiche: rennrad oder zeitfahren (Triathlon/Aufleger). Standard: Radtyp aus profil.json")
-    a.add_argument("--max-sekunden", type=float, help="Nur den Anfang des Videos auswerten")
-    a.add_argument("--ausgabe", type=Path, help="Ordner für Ergebnisse")
-    a.add_argument("--ohne-video", action="store_true", help="Kein Overlay-Video schreiben")
+    a.add_argument("--crank", type=float, help="Crank length in mm, e.g. 172.5 (for values in mm)")
+    a.add_argument("--side", choices=["auto", "left", "right"], default="auto", help="Body side facing the camera")
+    a.add_argument("--model", choices=["lite", "full", "heavy"], default="heavy")
+    a.add_argument("--profile", choices=["road", "tt"],
+                   help="Target ranges: road or tt (time trial/triathlon). Default: bike type from profile.json")
+    a.add_argument("--max-seconds", type=float, help="Only analyse the start of the video")
+    a.add_argument("--out", type=Path, help="Folder for results")
+    a.add_argument("--no-video", action="store_true", help="Do not write the overlay video")
 
-    sub.add_parser("profil", help="Fahrer- und Radprofil eingeben oder ändern")
-    w = sub.add_parser("web", help="Oberfläche im Browser starten")
+    sub.add_parser("profile", help="Enter or change the rider and bike profile")
+    w = sub.add_parser("web", help="Start the browser interface")
     w.add_argument("--port", type=int, default=8765)
-    w.add_argument("--kein-browser", action="store_true", help="Browser nicht automatisch öffnen")
+    w.add_argument("--no-browser", action="store_true", help="Do not open the browser automatically")
 
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
-    profile_path = root / "profil.json"
+    from .migrate import migrate_project
+    migrate_project(root)
+    profile_path = root / "profile.json"
     from .profile import Profile
     rider = Profile.load(profile_path)
 
-    if args.cmd == "analyse":
+    if args.cmd == "analyze":
         from .video import analyze_file
-        out = args.ausgabe or root / "ergebnisse" / args.video.stem
-        analyze_file(args.video, out, args.kurbel, SIDES[args.seite], args.modell,
-                     args.max_sekunden, render=not args.ohne_video, profile=args.profil,
-                     rider=rider)
+        out = args.out or root / "results" / args.video.stem
+        analyze_file(args.video, out, args.crank, args.side, args.model, args.max_seconds,
+                     render=not args.no_video, profile=args.profile, rider=rider, lang=args.lang)
     elif args.cmd == "web":
         import threading
         import webbrowser
@@ -47,11 +47,11 @@ def main():
 
         from .web.app import create_app
         url = f"http://127.0.0.1:{args.port}"
-        print(f"Bikefit läuft auf {url}  (beenden mit Ctrl+C)")
-        if not args.kein_browser:
+        print(f"Bikefit is running at {url}  (stop with Ctrl+C)")
+        if not args.no_browser:
             threading.Timer(1.5, webbrowser.open, (url,)).start()
-        uvicorn.run(create_app(root / "daten"), host="127.0.0.1", port=args.port, log_level="warning")
-    elif args.cmd == "profil":
+        uvicorn.run(create_app(root / "data"), host="127.0.0.1", port=args.port, log_level="warning")
+    elif args.cmd == "profile":
         from .profile import interactive
         interactive(profile_path)
 

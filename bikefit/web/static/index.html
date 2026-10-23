@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,13 +11,14 @@
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-  <a class="skip" href="#main">Zum Inhalt springen</a>
+  <a class="skip" href="#main">Skip to content</a>
   <header class="topbar">
-    <a class="brand" href="#/" aria-label="Bikefit Startseite">
+    <a class="brand" href="#/" aria-label="Bikefit home">
       <span class="logo"><svg aria-hidden="true" viewBox="0 0 24 24" class="icon"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-3 11.5V14l-3-3 4-3 2 3h2"/></svg></span>
       <span>Bikefit</span>
     </a>
-    <nav aria-label="Fortschritt" class="stepper" id="stepper" hidden></nav>
+    <nav aria-label="Progress" class="stepper" id="stepper" hidden></nav>
+    <div class="lang-switch" id="lang" role="group" aria-label="Language"></div>
   </header>
   <main id="main" tabindex="-1"></main>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

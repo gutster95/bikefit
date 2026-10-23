@@ -1,48 +1,56 @@
-"""Target ranges and the rule set that turns metrics into recommendations.
+"""Target ranges and the rules that turn metrics into recommendations.
 
 Ranges are common dynamic bike-fit guidelines for a road bike. They are
-starting points, not hard limits, and will move into a config file later.
+starting points, not hard limits. Texts come from i18n so every function
+that produces advice takes the display language.
 """
 from __future__ import annotations
 
 import math
 
+from .i18n import DEFAULT_LANG, t
+
+# key: (low, high, unit); labels are i18n "metric.<key>"
 ROAD = {
-    "knee_extension": (30.0, 40.0, "Kniebeugung unten (max. Streckung)", "°"),
-    "knee_flexion_max": (105.0, 120.0, "Kniebeugung oben", "°"),
-    "hip_closed": (45.0, 75.0, "Hüftwinkel geschlossen (oben)", "°"),
-    "ankle_range": (15.0, 30.0, "Bewegungsumfang Fußgelenk", "°"),
-    "torso_angle": (35.0, 50.0, "Oberkörper zur Horizontalen", "°"),
-    "shoulder_angle": (80.0, 95.0, "Schulterwinkel", "°"),
-    "elbow_flexion": (15.0, 30.0, "Ellbogenbeugung", "°"),
-    "kops_mm": (-20.0, 20.0, "Knie vor Pedalachse bei 3 Uhr", "mm"),
+    "knee_extension": (30.0, 40.0, "°"),
+    "knee_flexion_max": (105.0, 120.0, "°"),
+    "hip_closed": (45.0, 75.0, "°"),
+    "ankle_range": (15.0, 30.0, "°"),
+    "torso_angle": (35.0, 50.0, "°"),
+    "shoulder_angle": (80.0, 95.0, "°"),
+    "elbow_flexion": (15.0, 30.0, "°"),
+    "kops_mm": (-20.0, 20.0, "mm"),
 }
 # Time trial / triathlon on aero bars: flatter torso, more closed hip,
 # elbows bent roughly 90 deg under the shoulders.
 TT = {
     **ROAD,
-    "hip_closed": (40.0, 70.0, "Hüftwinkel geschlossen (oben)", "°"),
-    "torso_angle": (10.0, 25.0, "Oberkörper zur Horizontalen", "°"),
-    "shoulder_angle": (80.0, 100.0, "Schulterwinkel", "°"),
-    "elbow_flexion": (70.0, 100.0, "Ellbogenbeugung", "°"),
+    "hip_closed": (40.0, 70.0, "°"),
+    "torso_angle": (10.0, 25.0, "°"),
+    "shoulder_angle": (80.0, 100.0, "°"),
+    "elbow_flexion": (70.0, 100.0, "°"),
 }
 # Knee-over-pedal is a road heuristic; TT positions sit far forward on purpose.
 del TT["kops_mm"]
-PROFILES = {"rennrad": ROAD, "zeitfahren": TT}
+PROFILES = {"road": ROAD, "tt": TT}
 MAX_STEP_MM = 10  # never move a contact point more than this in one round
-ALL_GOOD = "Alle gemessenen Werte liegen im Zielbereich. Keine Änderung nötig."
 MIN_STEP_MM = 3  # smaller changes are within the measurement uncertainty
+MIN_STEP_DEG = 1.5
+
+# Fitting order: what to change first when several values are off.
+STEP = {"knee_extension": 1, "knee_flexion_max": 1, "ankle_range": 1, "kops_mm": 2,
+        "hip_closed": 3, "torso_angle": 3, "shoulder_angle": 3, "elbow_flexion": 3}
 
 
 def evaluate(summary: dict, targets=ROAD) -> list[dict]:
     rows = []
-    for key, (lo, hi, label, unit) in targets.items():
+    for key, (lo, hi, unit) in targets.items():
         if key not in summary:
             continue
         v = summary[key]["median"]
-        status = "ok" if lo <= v <= hi else ("niedrig" if v < lo else "hoch")
-        rows.append({"key": key, "label": label, "unit": unit, "value": v,
-                     "std": summary[key]["std"], "lo": lo, "hi": hi, "status": status})
+        status = "ok" if lo <= v <= hi else ("low" if v < lo else "high")
+        rows.append({"key": key, "unit": unit, "value": v, "std": summary[key]["std"],
+                     "lo": lo, "hi": hi, "status": status})
     return rows
 
 
@@ -58,8 +66,12 @@ def saddle_height_change_mm(knee_ext_deg: float, target_deg: float,
     return dist(target_deg) - dist(knee_ext_deg)
 
 
+def is_done(summary: dict, segments: dict, mm_per_px: float | None, targets=ROAD) -> bool:
+    return recommend(summary, segments, mm_per_px, targets) == [t("rec.all_good")]
+
+
 def recommend(summary: dict, segments: dict, mm_per_px: float | None,
-              targets=ROAD, bike=None) -> list[str]:
+              targets=ROAD, bike=None, lang: str = DEFAULT_LANG) -> list[str]:
     """One change at a time, in fitting order: saddle height, setback, cockpit.
     bike (profile.Bike) turns relative changes into absolute settings."""
     tips = []
@@ -67,66 +79,58 @@ def recommend(summary: dict, segments: dict, mm_per_px: float | None,
     lo, hi = targets["knee_extension"][:2]
     if not lo <= ext <= hi:
         target = lo + 2 if ext < lo else hi - 2
-        direction = "senken" if ext < lo else "anheben"
-        text = f"Sattelhöhe {direction}: Knie unten {ext:.0f}° gebeugt, Ziel {lo:.0f}–{hi:.0f}°."
+        direction = t("rec.dir.lower" if ext < lo else "rec.dir.raise", lang)
+        text = t("rec.saddle_height", lang, direction=direction, value=ext, lo=lo, hi=hi)
         if mm_per_px:
             delta = saddle_height_change_mm(ext, target, segments["thigh_px"] * mm_per_px,
                                             segments["shank_px"] * mm_per_px)
             step = max(-MAX_STEP_MM, min(MAX_STEP_MM, delta))
-            text += f" Rechnerisch ca. {abs(delta):.0f} mm, in diesem Schritt {abs(step):.0f} mm"
-            if bike and bike.sattelhoehe_mm:
-                text += f" (Sattelhöhe {bike.sattelhoehe_mm:.0f} → {bike.sattelhoehe_mm + step:.0f} mm)"
-            text += ", dann neu messen."
+            absolute = (t("rec.saddle_height_abs", lang, before=bike.saddle_height_mm,
+                          after=bike.saddle_height_mm + step) if bike and bike.saddle_height_mm else "")
+            text += " " + t("rec.saddle_height_mm", lang, total=abs(delta), step=abs(step), absolute=absolute)
         else:
-            text += " Für eine Angabe in mm Kurbellänge mit --kurbel angeben."
+            text += " " + t("rec.need_crank", lang)
         if ext < lo and summary.get("ankle_range", {}).get("median", 0) > targets["ankle_range"][1]:
-            text += " Das große Fußgelenk-Spiel bestätigt: Du gleichst eine zu hohe Sattelposition mit dem Fuß aus."
-        tips.append(text)
-        tips.append("Erst die Sattelhöhe anpassen und neu messen, danach Sattelversatz und Cockpit.")
-        return tips
+            text += " " + t("rec.ankle_compensates", lang)
+        return [text, t("rec.order", lang)]
 
     if "kops_mm" in summary and "kops_mm" in targets:
         kops = summary["kops_mm"]["median"]
         klo, khi = targets["kops_mm"][:2]
         if kops > khi + MIN_STEP_MM:
             step = min(MAX_STEP_MM, kops - khi)
-            tips.append(f"Sattel etwas nach hinten: Knie {kops:.0f} mm vor der Pedalachse bei 3 Uhr. "
-                        f"Zuerst {step:.0f} mm{_setback(bike, step)}, Sattelhöhe danach prüfen.")
-        elif kops < klo - MIN_STEP_MM:
+            return [t("rec.setback_back", lang, kops=kops, step=step, absolute=_setback(bike, step, lang))]
+        if kops < klo - MIN_STEP_MM:
             step = min(MAX_STEP_MM, klo - kops)
-            tips.append(f"Sattel etwas nach vorn: Knie {-kops:.0f} mm hinter der Pedalachse bei 3 Uhr. "
-                        f"Zuerst {step:.0f} mm{_setback(bike, -step)}, Sattelhöhe danach prüfen.")
-        if tips:
-            return tips
+            return [t("rec.setback_forward", lang, kops=-kops, step=step, absolute=_setback(bike, -step, lang))]
 
     torso = summary["torso_angle"]["median"]
     shoulder = summary["shoulder_angle"]["median"]
     elbow = summary["elbow_flexion"]["median"]
-    arms_reliable = summary["elbow_flexion"]["std"] <= 8
-    if not arms_reliable:
-        tips.append("Keine Cockpit-Empfehlung: Armwinkel zu unruhig. Hände während der Aufnahme ruhig am Lenker lassen.")
+    if summary["elbow_flexion"]["std"] > 8:
+        tips.append(t("rec.arms_unsteady", lang))
     elif shoulder > targets["shoulder_angle"][1] or elbow < targets["elbow_flexion"][0]:
-        tips.append(f"Cockpit eher zu lang: Schulterwinkel {shoulder:.0f}°, Ellbogen {elbow:.0f}° gebeugt. "
-                    "Kürzerer Vorbau oder Lenker näher heranholen." + _stem(summary, segments, mm_per_px, targets, bike, -1))
+        tips.append(t("rec.cockpit_long", lang, shoulder=shoulder, elbow=elbow)
+                    + _stem(summary, segments, mm_per_px, targets, bike, -1, lang))
     elif shoulder < targets["shoulder_angle"][0] or elbow > targets["elbow_flexion"][1]:
-        tips.append(f"Cockpit eher zu kurz: Schulterwinkel {shoulder:.0f}°, Ellbogen {elbow:.0f}° gebeugt. "
-                    "Längerer Vorbau möglich." + _stem(summary, segments, mm_per_px, targets, bike, 1))
+        tips.append(t("rec.cockpit_short", lang, shoulder=shoulder, elbow=elbow)
+                    + _stem(summary, segments, mm_per_px, targets, bike, 1, lang))
     if torso < targets["torso_angle"][0] and summary["hip_closed"]["median"] < targets["hip_closed"][0]:
-        tips.append(f"Oberkörper sehr flach ({torso:.0f}°) und Hüfte oben eng: Lenker etwas höher (Spacer).")
+        tips.append(t("rec.torso_flat", lang, torso=torso))
     elif torso > targets["torso_angle"][1]:
-        tips.append(f"Oberkörper recht aufrecht ({torso:.0f}°): für mehr Aero kann der Lenker tiefer, wenn es bequem bleibt.")
-    if not tips:
-        tips.append(ALL_GOOD)
-    return tips
+        tips.append(t("rec.torso_upright", lang, torso=torso))
+    return tips or [t("rec.all_good", lang)]
 
 
-def _setback(bike, change_mm: float) -> str:
-    if bike and bike.sattelversatz_mm is not None:
-        return f" (Versatz {bike.sattelversatz_mm:.0f} → {bike.sattelversatz_mm + change_mm:.0f} mm)"
+def _setback(bike, change_mm: float, lang: str) -> str:
+    """Moving the saddle back (positive change) increases the setback."""
+    if bike and bike.saddle_setback_mm is not None:
+        return t("rec.setback_abs", lang, before=bike.saddle_setback_mm,
+                 after=bike.saddle_setback_mm + change_mm)
     return ""
 
 
-def _stem(summary, segments, mm_per_px, targets, bike, direction: int) -> str:
+def _stem(summary, segments, mm_per_px, targets, bike, direction: int, lang: str) -> str:
     """Hands move on an arc around the shoulder, so the reach change for a
     target shoulder angle is roughly arm length times the angle change.
     direction: -1 shorter, +1 longer, as decided by the rule."""
@@ -137,119 +141,97 @@ def _stem(summary, segments, mm_per_px, targets, bike, direction: int) -> str:
     change = math.radians(min(max(shoulder, lo + 2), hi - 2) - shoulder) * segments["arm_px"] * mm_per_px
     step = round(change / 10) * 10  # stems come in 10 mm steps
     if step * direction <= 0:
-        return (" Der Schulterwinkel passt aber schon, also eher kleine Korrektur:"
-                " Bremshebel etwas nach oben/hinten drehen oder Arme bewusst leicht beugen.")
-    text = f" Rechnerisch ca. {abs(change):.0f} mm, also Vorbau {abs(step):.0f} mm {'länger' if step > 0 else 'kürzer'}"
-    if bike and bike.vorbau_mm:
-        text += f" ({bike.vorbau_mm:.0f} → {bike.vorbau_mm + step:.0f} mm)"
-    return text + "."
-
-
-# Fitting order: what to change first when several values are off.
-STEP = {"knee_extension": 1, "knee_flexion_max": 1, "ankle_range": 1, "kops_mm": 2,
-        "hip_closed": 3, "torso_angle": 3, "shoulder_angle": 3, "elbow_flexion": 3}
+        return " " + t("rec.stem_shoulder_fine", lang)
+    absolute = (t("rec.stem_abs", lang, before=bike.stem_mm, after=bike.stem_mm + step)
+                if bike and bike.stem_mm else "")
+    return " " + t("rec.stem_mm", lang, total=abs(change), step=abs(step),
+                   direction=t("word.longer" if step > 0 else "word.shorter", lang), absolute=absolute)
 
 
 def corrections(rows: list[dict], summary: dict, segments: dict, mm_per_px: float | None,
-                bike=None, tt: bool = False) -> list[dict]:
-    """Adds a short bike change ("korrektur") and its place in the fitting
-    order ("schritt") to every row outside its target range. Uses the row's
-    own range, so it also works on stored results."""
+                bike=None, tt: bool = False, lang: str = DEFAULT_LANG) -> list[dict]:
+    """Adds a short bike change ("fix") and its place in the fitting order
+    ("step") to every row outside its target range. Uses the row's own
+    range, so it also works on stored results."""
     def mm(key):
         return segments[key] * mm_per_px if mm_per_px and key in segments else None
 
     thigh, shank, arm = mm("thigh_px"), mm("shank_px"), mm("arm_px")
     saddle_off = any(r["key"] == "knee_extension" and r["status"] != "ok" for r in rows)
     for r in rows:
-        r["korrektur"], r["schritt"] = None, None
+        r["fix"], r["step"] = None, None
         if r["status"] == "ok":
             continue
-        low = r["status"] == "niedrig"
-        v, lo, hi = r["value"], r["lo"], r["hi"]
-        k = r["key"]
+        low = r["status"] == "low"
+        v, lo, hi, k = r["value"], r["lo"], r["hi"], r["key"]
         outside = (lo - v) if low else (v - hi)
-        if outside < (MIN_STEP_MM if r["unit"] == "mm" else 1.5):
+        if outside < (MIN_STEP_MM if r["unit"] == "mm" else MIN_STEP_DEG):
             unit = " mm" if r["unit"] == "mm" else "°"
-            r["korrektur"] = (f"Nur {outside:.0f}{unit} außerhalb, das liegt in der Messgenauigkeit. "
-                              "Nichts ändern, beim nächsten Video wieder anschauen.") if outside >= 0.5 else (
-                              "Liegt praktisch auf der Grenze. Nichts ändern.")
+            r["fix"] = (t("fix.noise", lang, outside=outside, unit=unit) if outside >= 0.5
+                        else t("fix.on_edge", lang))
             continue
         if k == "knee_extension":
-            text = f"Sattel {'tiefer' if low else 'höher'} stellen"
+            text = t("fix.saddle_lower" if low else "fix.saddle_higher", lang)
             if thigh and shank:
                 delta = saddle_height_change_mm(v, lo + 2 if low else hi - 2, thigh, shank)
                 step = max(-MAX_STEP_MM, min(MAX_STEP_MM, delta))
-                text += f": rechnerisch {abs(delta):.0f} mm, jetzt {abs(step):.0f} mm"
-                if bike and bike.sattelhoehe_mm:
-                    text += f" ({bike.sattelhoehe_mm:.0f} → {bike.sattelhoehe_mm + step:.0f} mm)"
-            text += "." + (" Das Bein ist unten fast gestreckt." if low else " Das Bein bleibt unten zu stark gebeugt.")
+                text += t("fix.saddle_mm", lang, total=abs(delta), step=abs(step))
+                if bike and bike.saddle_height_mm:
+                    text += t("fix.abs", lang, before=bike.saddle_height_mm, after=bike.saddle_height_mm + step)
+            text += ". " + t("fix.leg_straight" if low else "fix.leg_bent", lang)
         elif k == "knee_flexion_max":
-            text = ("Knie oben weit offen, meist Folge eines hohen Sattels. Erst die Sattelhöhe prüfen."
-                    if low else "Knie oben stark gebeugt: Sattel etwas höher oder kürzere Kurbel "
-                    "(2,5 bis 5 mm kürzer) entlastet das Knie.")
+            text = t("fix.knee_top_open" if low else "fix.knee_top_closed", lang)
         elif k == "ankle_range":
-            text = ("Fuß arbeitet wenig. Unkritisch, eventuell Sattel 2 bis 3 mm höher und bewusst rund treten."
-                    if low else "Fuß kippt stark ab, oft Ausgleich für einen zu hohen Sattel: Sattel 3 bis 5 mm tiefer "
-                    "oder Cleats 2 bis 3 mm weiter nach hinten.")
+            text = t("fix.ankle_low" if low else "fix.ankle_high", lang)
         elif k == "kops_mm":
-            step = min(MAX_STEP_MM, (lo - v) if low else (v - hi))
-            change = step if low else -step
-            text = (f"Sattel {step:.0f} mm nach {'vorn' if low else 'hinten'} schieben"
-                    f"{_setback(bike, -change)}. Das Knie steht {abs(v):.0f} mm "
-                    f"{'hinter' if v < 0 else 'vor'} der Pedalachse. Danach Sattelhöhe prüfen, "
-                    "beim Verschieben ändert sie sich leicht.")
+            step = min(MAX_STEP_MM, outside)
+            text = t("fix.kops", lang, step=step, direction=t("word.forward" if low else "word.back", lang),
+                     absolute=_setback(bike, -step if low else step, lang), kops=abs(v),
+                     position=t("word.behind" if v < 0 else "word.ahead", lang))
         elif k == "hip_closed":
-            text = ("Hüfte oben zu eng: Lenker höher (10 mm Spacer unter den Vorbau) oder kürzerer Vorbau. "
-                    "Kürzere Kurbeln öffnen die Hüfte ebenfalls." if low else
-                    "Hüfte bleibt offen: Lenker darf tiefer (10 mm Spacer über den Vorbau), wenn du sportlicher sitzen willst.")
+            text = t("fix.hip_closed" if low else "fix.hip_open", lang)
         elif k == "torso_angle":
             if tt:
-                text = ("Sehr flach: Auflegerpads 10 mm höher." if low else "Recht aufrecht: Auflegerpads 10 mm tiefer.")
+                text = t("fix.tt_torso_flat" if low else "fix.tt_torso_upright", lang)
             else:
-                text = (f"Oberkörper sehr flach ({v:.0f}°): Lenker höher, 10 mm Spacer unter den Vorbau "
-                        f"{_spacer(bike, 10)}oder Vorbau mit mehr Steigung." if low else
-                        f"Oberkörper aufrecht ({v:.0f}°): für mehr Aero Lenker tiefer, 10 mm Spacer über den Vorbau "
-                        f"{_spacer(bike, -10)}. Nur wenn es bequem bleibt.")
+                text = t("fix.torso_flat" if low else "fix.torso_upright", lang, torso=v,
+                         absolute=_spacer(bike, 10 if low else -10, lang))
         elif k == "shoulder_angle":
-            text = (("Pads weiter nach vorn." if low else "Pads weiter nach hinten.") if tt else
-                    f"Cockpit {'zu kurz' if low else 'zu lang'}: Vorbau {'länger' if low else 'kürzer'}."
-                    + _stem_mm(v, lo, hi, arm, bike))
+            if tt:
+                text = t("fix.tt_pads_forward" if low else "fix.tt_pads_back", lang)
+            else:
+                text = t("fix.cockpit_short" if low else "fix.cockpit_long", lang) + _stem_mm(v, lo, hi, arm, bike, lang)
         elif k == "elbow_flexion":
             if tt:
-                text = ("Arme zu gestreckt: Pads näher zum Körper." if low else "Arme zu stark gebeugt: Pads weiter nach vorn.")
-            else:
+                text = t("fix.tt_arms_straight" if low else "fix.tt_arms_bent", lang)
+            elif low:
                 shoulder = summary.get("shoulder_angle", {}).get("median")
-                shoulder_ok = shoulder is not None and shoulder <= next(
-                    (x["hi"] for x in rows if x["key"] == "shoulder_angle"), 95)
-                text = (("Arme fast gestreckt, der Schulterwinkel passt aber. Darum nicht den Vorbau tauschen: "
-                         "Bremsgriffe 5 bis 10 mm höher bzw. näher drehen und die Ellbogen bewusst locker beugen."
-                         if shoulder_ok else
-                         "Arme fast gestreckt: Lenker näher heran (Vorbau 10 mm kürzer) oder etwas höher. "
-                         "Ellbogen locker beugen, das dämpft Stöße.") if low else
-                        "Arme stark gebeugt: Cockpit eher zu kurz oder zu hoch, Vorbau 10 mm länger oder Lenker tiefer.")
+                shoulder_hi = next((x["hi"] for x in rows if x["key"] == "shoulder_angle"), 95)
+                fits = shoulder is not None and shoulder <= shoulder_hi
+                text = t("fix.arms_straight_hoods" if fits else "fix.arms_straight_stem", lang)
+            else:
+                text = t("fix.arms_bent", lang)
             if summary.get(k, {}).get("std", 0) > 8:
-                text += " Achtung, der Armwinkel schwankt stark, bitte Hände ruhig halten."
+                text += " " + t("fix.arms_unsteady", lang)
         else:
             continue
-        r["schritt"] = STEP[k]
+        r["step"] = STEP[k]
         if saddle_off and STEP[k] > 1:
-            text += " Erst nach der Sattelhöhe ändern."
-        r["korrektur"] = text
+            text += " " + t("fix.after_saddle", lang)
+        r["fix"] = text
     return rows
 
 
-def _spacer(bike, change_mm: float) -> str:
+def _spacer(bike, change_mm: float, lang: str) -> str:
     if bike and bike.spacer_mm is not None:
-        return f"({bike.spacer_mm:.0f} → {max(0, bike.spacer_mm + change_mm):.0f} mm) "
+        return t("fix.spacer_abs", lang, before=bike.spacer_mm, after=max(0, bike.spacer_mm + change_mm))
     return ""
 
 
-def _stem_mm(shoulder, lo, hi, arm_mm, bike) -> str:
+def _stem_mm(shoulder, lo, hi, arm_mm, bike, lang: str) -> str:
     if not arm_mm:
         return ""
     change = math.radians(min(max(shoulder, lo + 2), hi - 2) - shoulder) * arm_mm
     step = round(change / 10) * 10 or (10 if change > 0 else -10)
-    text = f" Rechnerisch {abs(change):.0f} mm, also {abs(step):.0f} mm"
-    if bike and bike.vorbau_mm:
-        text += f" ({bike.vorbau_mm:.0f} → {bike.vorbau_mm + step:.0f} mm)"
-    return text + "."
+    absolute = t("fix.abs", lang, before=bike.stem_mm, after=bike.stem_mm + step) if bike and bike.stem_mm else ""
+    return t("fix.stem_mm", lang, total=abs(change), step=abs(step), absolute=absolute)

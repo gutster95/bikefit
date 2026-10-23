@@ -25,7 +25,7 @@ def _now() -> str:
 class Store:
     def __init__(self, root: Path):
         self.root = root
-        (root / "sitzungen").mkdir(parents=True, exist_ok=True)
+        (root / "sessions").mkdir(parents=True, exist_ok=True)
 
     # -- helpers -------------------------------------------------------------
     def _read(self, path: Path, default):
@@ -41,16 +41,16 @@ class Store:
 
     # -- rider ---------------------------------------------------------------
     def rider(self) -> dict:
-        return self._read(self.root / "fahrer.json", asdict(Rider()))
+        return self._read(self.root / "rider.json", asdict(Rider()))
 
     def save_rider(self, data: dict) -> dict:
         rider = asdict(Rider.from_dict(data))
-        self._write(self.root / "fahrer.json", rider)
+        self._write(self.root / "rider.json", rider)
         return rider
 
     # -- garage --------------------------------------------------------------
     def bikes(self) -> list[dict]:
-        return self._read(self.root / "raeder.json", [])
+        return self._read(self.root / "bikes.json", [])
 
     def bike(self, bike_id: str) -> dict | None:
         return next((b for b in self.bikes() if b["id"] == bike_id), None)
@@ -60,7 +60,7 @@ class Store:
             bikes = self.bikes()
             bike = {"id": data.get("id") or uuid.uuid4().hex[:8], **asdict(Bike.from_dict(data))}
             bikes = [b for b in bikes if b["id"] != bike["id"]] + [bike]
-            self._write(self.root / "raeder.json", bikes)
+            self._write(self.root / "bikes.json", bikes)
         return bike
 
     def update_bike_settings(self, bike_id: str, changes: dict):
@@ -72,55 +72,55 @@ class Store:
 
     def profile_for(self, bike_id: str) -> Profile:
         bike = self.bike(bike_id) or {}
-        return Profile(fahrer=Rider.from_dict(self.rider()), rad=Bike.from_dict(bike))
+        return Profile(rider=Rider.from_dict(self.rider()), bike=Bike.from_dict(bike))
 
     # -- sessions ------------------------------------------------------------
     def session_dir(self, sid: str) -> Path:
-        return self.root / "sitzungen" / sid
+        return self.root / "sessions" / sid
 
     def session(self, sid: str) -> dict | None:
-        return self._read(self.session_dir(sid) / "sitzung.json", None)
+        return self._read(self.session_dir(sid) / "session.json", None)
 
     def sessions(self) -> list[dict]:
         out = []
-        for d in sorted((self.root / "sitzungen").iterdir(), reverse=True):
-            s = self._read(d / "sitzung.json", None)
+        for d in sorted((self.root / "sessions").iterdir(), reverse=True):
+            s = self._read(d / "session.json", None)
             if s:
                 out.append(s)
         return out
 
     def create_session(self, bike_id: str) -> dict:
         sid = datetime.now().strftime("%Y%m%d-%H%M%S")
-        s = {"id": sid, "rad_id": bike_id, "erstellt": _now(), "runden": []}
-        self._write(self.session_dir(sid) / "sitzung.json", s)
+        s = {"id": sid, "bike_id": bike_id, "created": _now(), "rounds": []}
+        self._write(self.session_dir(sid) / "session.json", s)
         return s
 
     def delete_session(self, sid: str) -> bool:
         """Removes the session folder with its videos and results."""
         folder = self.session_dir(sid)
-        if not (folder / "sitzung.json").exists() or folder.parent != self.root / "sitzungen":
+        if not (folder / "session.json").exists() or folder.parent != self.root / "sessions":
             return False
         shutil.rmtree(folder)
         return True
 
-    def add_round(self, sid: str, video_name: str, change: str) -> dict:
+    def add_round(self, sid: str, video_name: str, change: str, lang: str) -> dict:
         with _lock:
             s = self.session(sid)
-            nr = len(s["runden"]) + 1
-            r = {"nr": nr, "erstellt": _now(), "aenderung": change, "video": video_name,
-                 "status": "wartet", "fortschritt": 0.0, "meldung": "In der Warteschlange"}
-            s["runden"].append(r)
-            self._write(self.session_dir(sid) / "sitzung.json", s)
+            nr = len(s["rounds"]) + 1
+            r = {"nr": nr, "created": _now(), "change": change, "video": video_name, "lang": lang,
+                 "status": "queued", "progress": 0.0, "message": "progress.queued"}
+            s["rounds"].append(r)
+            self._write(self.session_dir(sid) / "session.json", s)
         return r
 
     def update_round(self, sid: str, nr: int, **fields):
         with _lock:
             s = self.session(sid)
-            s["runden"][nr - 1].update(fields)
-            self._write(self.session_dir(sid) / "sitzung.json", s)
+            s["rounds"][nr - 1].update(fields)
+            self._write(self.session_dir(sid) / "session.json", s)
 
     def round_dir(self, sid: str, nr: int) -> Path:
-        return self.session_dir(sid) / f"runde_{nr}"
+        return self.session_dir(sid) / f"round_{nr}"
 
     def result(self, sid: str, nr: int) -> dict | None:
-        return self._read(self.round_dir(sid, nr) / "ergebnis.json", None)
+        return self._read(self.round_dir(sid, nr) / "result.json", None)
