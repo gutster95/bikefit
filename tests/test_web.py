@@ -15,6 +15,9 @@ def test_rider_bike_session_flow(tmp_path):
     assert detail["rad"]["marke"] == "Canyon" and detail["runden"] == []
     assert "Canyon" in client.get("/api/marken").json()
     assert client.get("/").status_code == 200
+    assert client.delete(f"/api/sitzungen/{s['id']}").status_code == 200
+    assert client.get(f"/api/sitzungen/{s['id']}").status_code == 404
+    assert client.delete("/api/sitzungen/..").status_code in (404, 405)
 
 
 def test_model_presets_are_plausible():

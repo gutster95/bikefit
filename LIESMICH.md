@@ -1,21 +1,28 @@
 # Bikefit – Video-Analyse
 
-Misst deine Gelenkwinkel auf dem Rad aus einem Video, ganz ohne Marker. Noch ohne schöne Oberfläche: Bedient wird über das Terminal.
+Misst deine Gelenkwinkel auf dem Rad aus einem Video, ganz ohne Marker. Bedient wird im Browser, gestartet per Doppelklick.
 
 ## Starten (Mac)
 
 1. **Python installieren:** Auf https://www.python.org/downloads/ die aktuelle Version 3.12 oder 3.13 für macOS laden und installieren.
-2. Im Finder im Ordner `bikefit` auf **„Bikefit starten.command“** doppelklicken.
+2. Im Finder im Ordner `bikefit` auf **`start.command`** doppelklicken.
    - Falls macOS warnt („nicht verifizierter Entwickler“): Rechtsklick → Öffnen → Öffnen.
-   - Falls sich stattdessen ein Texteditor öffnet: Terminal öffnen und `bash ~/Documents/"Bikefit Software"/bikefit/"Bikefit starten.command"` eingeben.
+   - Falls sich stattdessen ein Texteditor öffnet: Terminal öffnen und `bash ~/Documents/"Bikefit Software"/bikefit/start.command` eingeben.
 3. Beim ersten Start wird alles installiert (einige Minuten, ca. 30 MB Erkennungsmodell). Danach öffnet sich der Browser mit Bikefit.
 4. Beenden: Im Terminalfenster Ctrl+C drücken oder das Fenster schließen.
+
+## Starten (Windows)
+
+1. **Python installieren:** Auf https://www.python.org/downloads/ Version 3.12 oder 3.13 für Windows laden. Im Installer **„Add python.exe to PATH“** anhaken.
+2. Im Ordner `bikefit` auf **`start.bat`** doppelklicken.
+   - Falls Windows warnt („Der Computer wurde durch Windows geschützt“): Weitere Informationen → Trotzdem ausführen.
+3. Beim ersten Start wird alles installiert, danach öffnet sich der Browser. Beenden: Konsolenfenster schließen.
 
 Alle Daten (Profil, Garage, Videos, Auswertungen) liegen im Ordner `daten/`.
 
 ## Die Oberfläche
 
-Der Ablauf ist wie ein Gespräch beim Fitter: **Gespräch** (Ziel, Beschwerden) → **Körper** (Größe, Schrittlänge, Beweglichkeit) → **Rad** (Garage mit Marke, Modell, Kurbellänge, aktuellen Einstellungen) → **Video** hochladen → **Auswertung**: links das Video mit Skelett, rechts der nächste Schritt und alle Messwerte. Danach verstellst du das Rad, trägst die neuen Maße ein und lädst ein neues Video hoch. Die Software vergleicht jede Runde mit der vorherigen, bis alles im Zielbereich ist.
+Der Ablauf ist wie ein Gespräch beim Fitter: **Gespräch** (Ziel, Beschwerden) → **Körper** (Größe, Schrittlänge, Beweglichkeit) → **Rad** (Garage mit Marke, Modell, Kurbellänge, aktuellen Einstellungen) → **Video** hochladen → **Auswertung**: links das Video mit Skelett, rechts der nächste Schritt und alle Messwerte. Danach verstellst du das Rad, trägst die neuen Maße ein und lädst ein neues Video hoch. Die Software vergleicht jede Runde mit der vorherigen, bis alles im Zielbereich ist. Alte Fittings löschst du auf der Startseite über das Papierkorb-Symbol (mit Sicherheitsabfrage).
 
 ## Für Fortgeschrittene: Terminal
 

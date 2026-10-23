@@ -124,6 +124,16 @@ def create_app(data_dir: Path) -> FastAPI:
             _add_corrections(r.get("ergebnis"), s["rad"])
         return s
 
+    @app.delete("/api/sitzungen/{sid}")
+    def delete_session(sid: str):
+        s = store.session(sid)
+        if not s:
+            raise HTTPException(404, "Sitzung nicht gefunden")
+        if any(r["status"] in ("wartet", "laeuft") for r in s["runden"]):
+            raise HTTPException(409, "Die Auswertung läuft noch. Bitte warten, bis sie fertig ist.")
+        store.delete_session(sid)
+        return {"geloescht": sid}
+
     @app.post("/api/sitzungen/{sid}/runden")
     def new_round(sid: str, video: UploadFile = File(...), aenderung: str = Form(""),
                   sattelhoehe_mm: float | None = Form(None), sattelversatz_mm: float | None = Form(None),

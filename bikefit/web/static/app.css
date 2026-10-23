@@ -271,3 +271,16 @@ video { width: 100%; border-radius: var(--radius-md); background: #000; display:
 @media (max-width: 520px) {
   .session-list .badge { display: none; }
 }
+
+/* delete */
+.session-list li { display: flex; gap: var(--space-sm); align-items: stretch; }
+.session-list li > a { flex: 1; min-width: 0; }
+.icon-btn { display: grid; place-items: center; width: 52px; flex: none; border-radius: var(--radius-md); border: 1.5px solid transparent; background: var(--color-surface-2); color: var(--color-muted-foreground); cursor: pointer; transition: color var(--dur-fast), border-color var(--dur-fast); }
+.icon-btn:hover { color: var(--color-destructive); border-color: color-mix(in srgb, var(--color-destructive) 50%, transparent); }
+.btn-danger { background: var(--color-destructive); color: #1A0A07; }
+.btn-danger .circle { background: #1A0A07; color: var(--color-destructive); }
+.btn-danger:hover { background: #FF948A; }
+#del:hover { color: var(--color-destructive); }
+dialog.confirm { max-width: min(440px, calc(100vw - 32px)); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); color: var(--color-foreground); padding: var(--space-lg); }
+dialog.confirm::backdrop { background: rgba(5, 6, 4, .7); backdrop-filter: blur(4px); }
+dialog.confirm .row { justify-content: flex-end; margin-top: var(--space-md); }

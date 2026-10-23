@@ -6,6 +6,7 @@ read, backed up or deleted by hand.
 from __future__ import annotations
 
 import json
+import shutil
 import threading
 import uuid
 from dataclasses import asdict
@@ -93,6 +94,14 @@ class Store:
         s = {"id": sid, "rad_id": bike_id, "erstellt": _now(), "runden": []}
         self._write(self.session_dir(sid) / "sitzung.json", s)
         return s
+
+    def delete_session(self, sid: str) -> bool:
+        """Removes the session folder with its videos and results."""
+        folder = self.session_dir(sid)
+        if not (folder / "sitzung.json").exists() or folder.parent != self.root / "sitzungen":
+            return False
+        shutil.rmtree(folder)
+        return True
 
     def add_round(self, sid: str, video_name: str, change: str) -> dict:
         with _lock:

@@ -18,6 +18,7 @@ const ICONS = {
   crosshair: '<circle cx="12" cy="12" r="9"/><path d="M22 12h-4M6 12H2M12 6V2M12 22v-4"/>',
   angle: '<path d="M4 20h16"/><path d="M4 20 15 5"/><path d="M10 20a6 6 0 0 0-2.4-4.8"/>',
   foot: '<path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z"/><path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z"/>',
+  trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6M14 11v6"/>',
   user: '<circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/>',
   bike: '<circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-3 11.5V14l-3-3 4-3 2 3h2"/>',
 };
@@ -61,6 +62,38 @@ function render(html, step) {
   window.scrollTo({ top: 0 });
 }
 
+// Confirmation in a modal <dialog>; resolves true when the user confirms.
+function confirmDialog(title, text, okLabel) {
+  return new Promise((resolve) => {
+    const d = document.createElement("dialog");
+    d.className = "confirm";
+    d.setAttribute("aria-labelledby", "confirm-title");
+    d.innerHTML = `<h2 id="confirm-title">${esc(title)}</h2><p class="muted">${esc(text)}</p>
+      <div class="row"><button class="btn btn-secondary" value="no">Abbrechen</button>
+      <button class="btn btn-danger" value="yes">${btnIcon("trash")} ${esc(okLabel)}</button></div>`;
+    document.body.append(d);
+    d.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => d.close(b.value)));
+    d.addEventListener("close", () => { resolve(d.returnValue === "yes"); d.remove(); });
+    d.showModal();
+    d.querySelector('button[value="no"]').focus();
+  });
+}
+
+async function deleteSession(sid, label) {
+  const ok = await confirmDialog("Fitting löschen?",
+    `${label}: Videos, Auswertungen und alle Runden werden endgültig gelöscht. Das lässt sich nicht rückgängig machen.`,
+    "Endgültig löschen");
+  if (!ok) return false;
+  try {
+    await api(`/api/sitzungen/${sid}`, { method: "DELETE" });
+    toast("Fitting gelöscht");
+    return true;
+  } catch (err) {
+    toast(err.message);
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------- start
 async function viewStart() {
   const [sessions, bikes] = await Promise.all([api("/api/sitzungen"), api("/api/raeder")]);
@@ -95,6 +128,7 @@ async function viewStart() {
         ${sessions.map((s) => {
           const last = s.runden[s.runden.length - 1];
           const done = last?.status === "fertig" && s.runden.some((r) => r.status === "fertig");
+          const label = `${bikeName(s.rad_id)} vom ${new Date(s.erstellt).toLocaleString("de-DE")}`;
           return `<li><a href="#/sitzung/${s.id}">
             <span class="bubble">${icon("bike")}</span>
             <div><div class="title"><strong>${esc(bikeName(s.rad_id))}</strong></div>
@@ -102,11 +136,14 @@ async function viewStart() {
             <span class="spacer"></span>
             ${done ? '<span class="badge ok">ausgewertet</span>' : last ? `<span class="badge">${esc(last.meldung)}</span>` : '<span class="badge">ohne Video</span>'}
             ${icon("arrowRight", "sm")}
-          </a></li>`;
+          </a><button class="icon-btn" data-del="${s.id}" data-label="${esc(label)}" aria-label="Fitting löschen: ${esc(label)}" title="Fitting löschen">${icon("trash", "sm")}</button></li>`;
         }).join("")}
       </ul>
     </section>` : ""}
   `, null);
+  main.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", async () => {
+    if (await deleteSession(b.dataset.del, b.dataset.label)) viewStart();
+  }));
 }
 
 // ---------------------------------------------------------------- step 1: conversation
@@ -538,11 +575,15 @@ function viewResult(s, finished, nr) {
         ${res.warnings.length ? `<section class="card"><h3>${icon("alert", "sm")} Zur Messqualität</h3><ul class="notes">${res.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></section>` : ""}
         ${res.notes.length ? `<section class="card"><h3>Info</h3><ul class="notes muted">${res.notes.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></section>` : ""}
         <p class="muted small">Ausgewertet ab Sekunde ${fmt(res.offset_s, 1)} des Videos (Auf- und Absteigen werden automatisch weggeschnitten). Die Software ersetzt keine medizinische Beratung.</p>
+        <button class="btn btn-ghost" id="del">${icon("trash", "sm")} Dieses Fitting löschen</button>
       </div>
     </div>`, 4);
   main.querySelectorAll(".rounds button").forEach((b) => b.addEventListener("click", () => {
     location.hash = `#/sitzung/${s.id}/runde/${b.dataset.nr}`;
   }));
+  document.getElementById("del").addEventListener("click", async () => {
+    if (await deleteSession(s.id, `Fitting vom ${new Date(s.erstellt).toLocaleString("de-DE")}`)) location.hash = "#/";
+  });
 }
 
 // ---------------------------------------------------------------- router
