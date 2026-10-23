@@ -1,6 +1,6 @@
 /* Bikefit "Lime" design: near-black olive background, electric lime accent,
    large rounded cards (dark, paper white or lime), pill buttons, stat tiles
-   with tinted icon circles. Font: Urbanist. Built after the user's reference. */
+   with tinted icon circles. Fonts: Nunito for headings and titles, Inter for body text, labels and numbers. Built after the user's reference. */
 :root {
   color-scheme: dark;
   --color-background: #0E100B;
@@ -29,7 +29,8 @@
   --radius-sm: 14px; --radius-md: 22px; --radius-lg: 30px;
   --shadow-lg: 0 24px 48px rgba(0, 0, 0, .35);
   --dur-fast: 150ms; --dur-base: 240ms;
-  --font: "Urbanist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Nunito", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-fast: 0ms; --dur-base: 0ms; }
@@ -39,11 +40,11 @@
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0; background: var(--color-background); color: var(--color-foreground);
-  font: 500 16px/1.5 var(--font);
+  font: 400 16px/1.5 var(--font);
   background-image: radial-gradient(1200px 500px at 85% -10%, rgba(198, 244, 50, .07), transparent 60%);
   background-attachment: fixed;
 }
-h1, h2, h3 { font-family: var(--font); font-weight: 700; letter-spacing: -.01em; line-height: 1.1; margin: 0 0 var(--space-sm); }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 800; letter-spacing: -.01em; line-height: 1.1; margin: 0 0 var(--space-sm); }
 h1 { font-size: clamp(2.1rem, 4.6vw, 3.4rem); text-wrap: balance; letter-spacing: -.025em; }
 h2 { font-size: 1.5rem; }
 h3 { font-size: 1.15rem; }
@@ -65,7 +66,7 @@ a { color: var(--color-lime); }
   padding: var(--space-sm) var(--space-lg); min-height: 76px; flex-wrap: wrap;
   background: color-mix(in srgb, var(--color-background) 88%, transparent); backdrop-filter: blur(12px);
 }
-.brand { display: flex; align-items: center; gap: 10px; color: var(--color-foreground); text-decoration: none; font: 800 1.45rem var(--font); letter-spacing: -.02em; min-height: 44px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--color-foreground); text-decoration: none; font: 800 1.45rem var(--font-display); letter-spacing: -.01em; min-height: 44px; }
 .brand .logo { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--color-lime); color: var(--color-on-lime); }
 .brand .logo .icon { width: 22px; height: 22px; }
 .stepper { margin-left: auto; }
@@ -204,7 +205,7 @@ details.more[open] summary::before { transform: rotate(45deg); }
 /* results */
 .result-head { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--space-md); flex-wrap: wrap; margin-bottom: var(--space-lg); }
 .result-head .facts { display: flex; gap: var(--space-sm); flex-wrap: wrap; }
-.fact { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 999px; padding: 8px 16px; font-weight: 700; }
+.fact { font-variant-numeric: tabular-nums; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 999px; padding: 8px 16px; font-weight: 700; }
 .fact small { color: var(--color-muted-foreground); font-weight: 600; margin-left: 4px; }
 .result { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(340px, 1fr); gap: var(--space-lg); align-items: start; }
 .video-wrap { position: sticky; top: 96px; }
@@ -230,7 +231,7 @@ video { width: 100%; border-radius: var(--radius-md); background: #000; display:
 .metric .dot { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--tint-lime); color: var(--color-on-paper); flex: none; }
 .metric.off .dot { background: var(--tint-violet); color: var(--ink-violet); }
 .metric .label { font-size: .85rem; color: var(--color-muted-foreground); font-weight: 600; line-height: 1.25; }
-.metric .value { font: 800 1.9rem/1 var(--font); letter-spacing: -.02em; white-space: nowrap; }
+.metric .value { font: 700 1.9rem/1 var(--font); letter-spacing: -.03em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .metric .value small { font-size: .95rem; font-weight: 700; margin-left: 2px; color: var(--color-muted-foreground); }
 .metric .foot { display: flex; justify-content: space-between; gap: var(--space-sm); flex-wrap: wrap; align-items: center; }
 .metric .delta { font-size: .8rem; color: var(--color-muted-foreground); white-space: nowrap; }
