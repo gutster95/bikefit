@@ -5,6 +5,8 @@ camera is chosen later in tracks.py.
 """
 from __future__ import annotations
 
+import shutil
+import ssl
 import urllib.request
 from pathlib import Path
 
@@ -32,7 +34,16 @@ def model_path(variant: str) -> Path:
     if not path.exists():
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
         print(f"Lade Pose-Modell '{variant}' herunter (einmalig) ...")
-        urllib.request.urlretrieve(MODEL_URLS[variant], path)
+        # python.org builds on macOS ship without root certificates -> use certifi
+        try:
+            import certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except ImportError:
+            ctx = ssl.create_default_context()
+        tmp = path.with_suffix(".part")
+        with urllib.request.urlopen(MODEL_URLS[variant], context=ctx) as resp, open(tmp, "wb") as f:
+            shutil.copyfileobj(resp, f)
+        tmp.replace(path)
     return path
 
 
