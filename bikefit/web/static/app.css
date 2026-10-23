@@ -284,3 +284,15 @@ video { width: 100%; border-radius: var(--radius-md); background: #000; display:
 dialog.confirm { max-width: min(440px, calc(100vw - 32px)); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); color: var(--color-foreground); padding: var(--space-lg); }
 dialog.confirm::backdrop { background: rgba(5, 6, 4, .7); backdrop-filter: blur(4px); }
 dialog.confirm .row { justify-content: flex-end; margin-top: var(--space-md); }
+
+/* clickable steps */
+.stepper li { padding: 0; }
+.stepper li > a, .stepper li > .step { display: flex; align-items: center; gap: var(--space-sm); padding: 6px 14px 6px 6px; border-radius: 999px; color: inherit; text-decoration: none; min-height: 40px; }
+.stepper li > a { cursor: pointer; transition: background-color var(--dur-fast), color var(--dur-fast); }
+.stepper li > a:hover { background: var(--color-surface-2); color: var(--color-foreground); }
+.stepper li > .step { cursor: default; }
+@media (max-width: 900px) {
+  .stepper li > a, .stepper li > .step { padding: 4px; }
+  .stepper li[aria-current="step"] { padding-right: 0; }
+  .stepper li[aria-current="step"] > .step { padding-right: 14px; }
+}

@@ -46,13 +46,30 @@ function toast(text) {
   toast.timer = setTimeout(() => t.classList.remove("show"), 2600);
 }
 
+// The fitting currently being worked on, so the stepper can jump back to its
+// video and result steps after visiting an earlier step.
+let active = null; // { id, rad_id, hasResult }
+
+function stepHref(i) {
+  if (i <= 2) return ["#/gespraech", "#/koerper", "#/rad"][i];
+  if (!active) return null;
+  if (i === 3) return `#/sitzung/${active.id}/video`;
+  return active.hasResult ? `#/sitzung/${active.id}` : null;
+}
+
 function setStep(index) {
-  if (index == null) { stepper.hidden = true; return; }
+  if (index == null) { stepper.hidden = true; active = null; return; }
   stepper.hidden = false;
-  stepper.innerHTML = `<ol>${STEPS.map((s, i) => `
-    <li class="${i < index ? "done" : ""}" ${i === index ? 'aria-current="step"' : ""}>
-      <span class="num">${i < index ? "✓" : i + 1}</span><span class="label">${s}</span>
-    </li>`).join("")}</ol>`;
+  stepper.innerHTML = `<ol>${STEPS.map((s, i) => {
+    const inner = `<span class="num">${i < index ? "✓" : i + 1}</span><span class="label">${s}</span>`;
+    const href = i !== index && stepHref(i);
+    return `<li class="${i < index ? "done" : ""}" ${i === index ? 'aria-current="step"' : ""}>
+      ${href ? `<a href="${href}" aria-label="Zu Schritt ${i + 1}: ${s}">${inner}</a>` : `<span class="step">${inner}</span>`}</li>`;
+  }).join("")}</ol>`;
+}
+
+function trackSession(s) {
+  active = { id: s.id, rad_id: s.rad_id, hasResult: s.runden.some((r) => r.status === "fertig") };
 }
 
 function render(html, step) {
@@ -358,8 +375,10 @@ async function viewBike() {
       for (const k of ["marke", "modell", "rahmengroesse"]) data[k] = fd.get(k).trim();
       for (const k of ["kurbel_mm", "sattelhoehe_mm", "sattelversatz_mm", "vorbau_mm", "spacer_mm", "stack_mm", "reach_mm", "sitzwinkel_grad"]) data[k] = num(fd.get(k));
       const bike = await api("/api/raeder", { method: "POST", body: data });
-      const session = await api("/api/sitzungen", { method: "POST", body: { rad_id: bike.id } });
-      location.hash = `#/sitzung/${session.id}/video`;
+      // Coming back from a running fitting with the same bike continues it.
+      const sid = active && active.rad_id === bike.id ? active.id
+        : (await api("/api/sitzungen", { method: "POST", body: { rad_id: bike.id } })).id;
+      location.hash = `#/sitzung/${sid}/video`;
     });
   };
   draw();
@@ -377,6 +396,7 @@ const RECORDING = [
 
 async function viewVideo(sid) {
   const s = await api(`/api/sitzungen/${sid}`);
+  trackSession(s);
   const next = s.runden.length + 1;
   const bike = s.rad || {};
   const last = [...s.runden].reverse().find((r) => r.status === "fertig");
@@ -456,6 +476,7 @@ let pollTimer = null;
 async function viewSession(sid, shownNr) {
   clearTimeout(pollTimer);
   const s = await api(`/api/sitzungen/${sid}`);
+  trackSession(s);
   if (!s.runden.length) { location.hash = `#/sitzung/${sid}/video`; return; }
   const last = s.runden[s.runden.length - 1];
   if (last.status === "wartet" || last.status === "laeuft") return viewProgress(s, last);
